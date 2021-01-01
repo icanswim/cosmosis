@@ -1,6 +1,4 @@
 conda create --name cosmosis anaconda python=3.7 numpy pandas scipy
-conda install -c conda-forge jupyterlab
 conda install -c pytorch pytorch=1.6 torchvision cudatoolkit=10.1
 conda install -c anaconda h5py
-conda install -c anaconda matplotlib
 conda install -c anaconda git
