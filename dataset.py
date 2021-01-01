@@ -9,8 +9,8 @@ from torch.utils.data import Dataset, IterableDataset, ConcatDataset
 from torch import as_tensor, cat
 
 
-class QDataset(Dataset, ABC):
-    """An abstract base class for quantum datasets
+class CDataset(Dataset, ABC):
+    """An abstract base class for cosmosis datasets
     embed = [(n_vocab, len_vec, param.requires_grad),...]
         The dataset reports if it has any categorical values it needs
         to encode and whether or not to train the embedding or fix it as a onehot
@@ -41,8 +41,34 @@ class QDataset(Dataset, ABC):
     def pad_data(self):
         """TODO: pad in multiple dimensions and trim"""
         pass
+
+class Dummy(CDataset):
     
-class SuperSet(QDataset):
+    def __init__(self, n=100, m=10):
+        self.datadic = self.load_data(n, m)
+        self.embed = []  # [(n_vocab, len_vec, param.requires_grad),...]
+        self.ds_idx = list(self.datadic.keys())  # list of the dataset's indices
+    
+    def __getitem__(self, i):
+        """set X and y and do preprocessing here
+        Return continuous, categorical, target.  empty list if none.
+        """
+        x_con = np.reshape(self.datadic[i], -1).astype(np.float32)
+        x_cat = []
+        y = np.reshape(np.asarray(i).astype(np.float32), -1)
+        
+        return as_tensor(x_con), x_cat, as_tensor(y)
+    
+    def __len__(self):
+        return len(self.ds_idx)
+    
+    def load_data(self, n, m):
+        data = {}
+        for i in range(n):
+            data[i] = np.random.uniform(-1, 1, m)
+        return data
+    
+class SuperSet(CDataset):
     
     def __init__(self, PrimaryDS, SecondaryDS, p_params, s_params):
         self.pds = PrimaryDS(**p_params)

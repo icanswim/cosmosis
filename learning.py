@@ -25,7 +25,7 @@ class Learn():
                  save_model=False, load_model=False, load_embed=False, adapt=False,
                  batch_size=1, epochs=1):
         
-        logging.basicConfig(filename='./logs/quantum.log', level=20)
+        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         start = datetime.now()
         logging.info('New experiment...\n\n model: {}, start time: {}'.format(
                                         Model, start.strftime('%Y%m%d_%H%M')))
@@ -181,7 +181,7 @@ class Learn():
 class Selector(Sampler):
     """A base class for subset selection for creating train, validation and test sets.
     Very fast, optimized for large datasets.  It is also possible to do filtering here 
-    or at the quantum_dataset level.  The validation set is bootstrapped (drawn from the
+    or at the dataset level.  The validation set is bootstrapped (drawn from the
     training set without replacement).
     TODO memory optimization
     """
