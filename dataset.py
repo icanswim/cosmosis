@@ -8,6 +8,8 @@ import numpy as np
 from torch.utils.data import Dataset, IterableDataset, ConcatDataset
 from torch import as_tensor, cat
 
+from sklearn import datasets
+
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
@@ -42,32 +44,24 @@ class CDataset(Dataset, ABC):
         """TODO: pad in multiple dimensions and trim"""
         pass
 
+    
 class Dummy(CDataset):
     
-    def __init__(self, n=100, m=10):
-        self.datadic = self.load_data(n, m)
-        self.embed = []  # [(n_vocab, len_vec, param.requires_grad),...]
-        self.ds_idx = list(self.datadic.keys())  # list of the dataset's indices
-    
-    def __getitem__(self, i):
-        """set X and y and do preprocessing here
-        Return continuous, categorical, target.  empty list if none.
-        """
-        x_con = np.reshape(self.datadic[i], -1).astype(np.float32)
-        x_cat = []
-        y = np.reshape(np.asarray(i).astype(np.float32), -1)
+    def __init__(self, make, ds_params):
+        self.datadic = self.load_data(make, ds_params)
         
-        return as_tensor(x_con), x_cat, as_tensor(y)
+    def __getitem__(self):
+        return as_tensor(np.reshape(self.X[i], -1)), [], \
+                        as_tensor(np.reshape(self.y[i], -1))
     
     def __len__(self):
-        return len(self.ds_idx)
-    
-    def load_data(self, n, m):
-        data = {}
-        for i in range(n):
-            data[i] = np.random.uniform(-1, 1, m)
-        return data
-    
+        return len(self.y)
+
+    def load_data(self, make, ds_params):
+        ds = getattr(datasets, make)
+        self.X, self.y = ds(**ds_params)
+        
+        
 class SuperSet(CDataset):
     
     def __init__(self, PrimaryDS, SecondaryDS, p_params, s_params):

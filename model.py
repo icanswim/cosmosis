@@ -4,10 +4,10 @@ from torch.nn import functional as F
 from math import sqrt
 
 
-class QModel(nn.Module):
+class CModel(nn.Module):
     """A base class for Fastchem models
     embed = [(n_vocab, len_vec, param.requires_grad),...]
-        The QDataset reports any categorical values it has to encode and whether 
+        The CDataset reports any categorical values it has to encode and whether 
         or not to train the embedding or fix it as a onehot
         and then serves up the values to be encoded as the x_cat component
         of the __getitem__ method.
@@ -68,7 +68,7 @@ class QModel(nn.Module):
         ffu.append(nn.Dropout(drop))
         return ffu
     
-class FFNet(QModel):
+class FFNet(CModel):
     
     model_config = {}
     model_config['simple'] = {'shape': [('D_in',1),(1,1),(1,1/2),(1/2,'D_out')], 
