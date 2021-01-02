@@ -47,19 +47,21 @@ class CDataset(Dataset, ABC):
     
 class Dummy(CDataset):
     
-    def __init__(self, make, ds_params):
-        self.datadic = self.load_data(make, ds_params)
+    def __init__(self, make, make_params):
+        self.load_data(make, make_params)
+        self.ds_idx = list(range(self.y.shape[0]))
+        self.embed = []
         
-    def __getitem__(self):
-        return as_tensor(np.reshape(self.X[i], -1)), [], \
-                        as_tensor(np.reshape(self.y[i], -1))
+    def __getitem__(self, i):
+        return as_tensor(np.reshape(self.X[i], -1).astype(np.float32)), [], \
+                        as_tensor(np.reshape(self.y[i], -1).astype(np.float32))
     
     def __len__(self):
-        return len(self.y)
+        return self.y.shape[0]
 
-    def load_data(self, make, ds_params):
+    def load_data(self, make, make_params):
         ds = getattr(datasets, make)
-        self.X, self.y = ds(**ds_params)
+        self.X, self.y = ds(**make_params)
         
         
 class SuperSet(CDataset):
