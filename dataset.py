@@ -49,7 +49,8 @@ class Dummy(CDataset):
     """make = sklearn datasets method name str ('make_regression')
     make_params = dict of parameters ({'n_samples': 100})
     """
-    def __init__(self, make, make_params):
+    def __init__(self, make='make_regression', make_params={'n_samples': 100,
+                                                            'n_features': 128}):
         self.load_data(make, make_params)
         self.ds_idx = list(range(self.y.shape[0]))
         self.embed = []
