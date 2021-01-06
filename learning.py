@@ -22,9 +22,9 @@ class Learn():
     TODO early stopping
     """
     def __init__(self, Dataset, Model, Sampler, Optimizer=None, Scheduler=None, Criterion=None, 
-                 model_params={}, ds_params={}, opt_params={}, 
-                 crit_params={}, scheduler_params={}, sample_params={},
-                 save_model=False, load_model=False, load_embed=False, adapt=False,
+                 ds_params={}, model_params={}, sample_params={},
+                 opt_params={}, sched_params={}, crit_params={}, 
+                 adapt=False, load_model=False, load_embed=False, save_model=False,
                  batch_size=1, epochs=1):
         
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
@@ -73,7 +73,7 @@ class Learn():
         if Criterion:
             self.criterion = Criterion(**crit_params).to('cuda:0')
             self.opt = Optimizer(self.model.parameters(), **opt_params)
-            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.opt)
+            self.scheduler = Scheduler(self.opt, **sched_params)
             logging.info('criterion: {}\n{}'.format(type(self.criterion), crit_params))
             logging.info('optimizer: {}\n{}'.format(type(self.opt), opt_params))
 
