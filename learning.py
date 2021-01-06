@@ -238,8 +238,5 @@ class Selector(Sampler):
         return self
     
     def shuffle_train_val_idx(self):
-        if self.set_seed:
-            random.seed(self.set_seed)
         random.shuffle(self.val_idx)
         random.shuffle(self.train_idx)
-        random.seed()
