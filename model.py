@@ -5,7 +5,7 @@ from math import sqrt
 
 
 class CModel(nn.Module):
-    """A base class for Fastchem models
+    """A base class for cosmosis models
     embed = [(n_vocab, len_vec, param.requires_grad),...]
         The CDataset reports any categorical values it has to encode and whether 
         or not to train the embedding or fix it as a onehot
@@ -33,7 +33,7 @@ class CModel(nn.Module):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model.  
         x_cat = list of torch cuda tensors which are the embedding indices
-        x_con = torch cuda tensor of concatenated continous feature vectors"""
+        x_con = torch cuda tensor of concatenated continuous feature vectors"""
         if len(x_cat) != 0:
             emb = []
             for i in range(len(x_cat)):
@@ -52,7 +52,8 @@ class CModel(nn.Module):
         return x
         
     def adapt(self, shape):
-        """for adapting a dataset shape[0] to a saved model shape[1]"""
+        """for adapting a dataset shape[0] to a saved model shape[1]
+        shape = (data_shape, model_shape)"""
         # freeze the layers
         for param in self.parameters(): 
             param.requires_grad = False

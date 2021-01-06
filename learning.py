@@ -18,10 +18,12 @@ class Learn():
     save_model = True/False
     load_model = False/'./models/savedmodel.pth'
     Criterion = None implies inference mode.
-    adapt = False/(dataset input shape, model input shape) 
+    adapt = False/(dataset input shape, model input shape)
+    TODO early stopping
     """
-    def __init__(self, Dataset, Model, Sampler, Optimizer=None, Criterion=None, 
-                 model_params={}, ds_params={}, opt_params={}, crit_params={},sample_params={},
+    def __init__(self, Dataset, Model, Sampler, Optimizer=None, Scheduler=None, Criterion=None, 
+                 model_params={}, ds_params={}, opt_params={}, 
+                 crit_params={}, scheduler_params={}, sample_params={},
                  save_model=False, load_model=False, load_embed=False, adapt=False,
                  batch_size=1, epochs=1):
         
@@ -71,18 +73,20 @@ class Learn():
         if Criterion:
             self.criterion = Criterion(**crit_params).to('cuda:0')
             self.opt = Optimizer(self.model.parameters(), **opt_params)
+            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.opt)
             logging.info('criterion: {}\n{}'.format(type(self.criterion), crit_params))
             logging.info('optimizer: {}\n{}'.format(type(self.opt), opt_params))
 
             self.train_log, self.val_log = [], []
             for e in range(epochs):
-                self.sampler.sample_train_val_idx()
+                self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
                     self.run('val')
                 if e % int(epochs/10) == 0:
-                    print('epoch: {} of {}, train loss: {}, val loss: {}'.format(
-                                e, epochs, self.train_log[-1], self.val_log[-1]))
+                    print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
+                            format(e, epochs, self.train_log[-1], self.val_log[-1], 
+                                                   self.opt.param_groups[0]['lr']))
             with no_grad():
                 self.run('test')
                 
@@ -145,16 +149,19 @@ class Learn():
                 y_pred = np.reshape(y_pred.data.to('cpu').numpy(), (-1, 1))
                 predictions.append(np.concatenate((y, y_pred), axis=1)) 
             else:
-                y = to_cuda(y)           
+                y = to_cuda(y)
+                self.opt.zero_grad()           
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if flag == 'train':
-                    self.opt.zero_grad()
                     b_loss.backward()
                     self.opt.step()
 
-        if flag == 'train': self.train_log.append(e_loss/i)
-        if flag == 'val': self.val_log.append(e_loss/i)
+        if flag == 'train': 
+            self.train_log.append(e_loss/i)
+        if flag == 'val': 
+            self.val_log.append(e_loss/i)
+            self.scheduler.step(e_loss)
         if flag == 'test':  
             logging.info('test loss: {}'.format(e_loss/i))
             print('test loss: {}'.format(e_loss/i))
@@ -181,26 +188,31 @@ class Learn():
 class Selector(Sampler):
     """A base class for subset selection for creating train, validation and test sets.
     Very fast, optimized for large datasets.  It is also possible to do filtering here 
-    or at the dataset level.  The validation set is bootstrapped (drawn from the
-    training set without replacement).
+    or at the dataset level.  
+    subset = create randomly selected subset of size = set_size*subset
+    splits = (test,train) remainer = val set
+    set_seed = False/seed for reproducible train/val/test set selection
     TODO memory optimization
     """
    
-    def __init__(self, dataset_idx, split=.1, subset=False, set_seed=False):
-        self.split = split 
+    def __init__(self, dataset_idx, splits=(.1,.8), subset=False, set_seed=False):
+        self.set_seed = set_seed
+        self.splits = splits 
         if subset:
             self.dataset_idx = random.sample(dataset_idx, int(len(dataset_idx)*subset))
         else:    
             self.dataset_idx = dataset_idx
         
-        if set_seed: 
-            random.seed(set_seed)
+        if self.set_seed: 
+            random.seed(self.set_seed)
         random.shuffle(self.dataset_idx)
-        cut = int(len(self.dataset_idx)*self.split)
-        self.test_idx = self.dataset_idx[:cut]
-        self.train_val_idx = self.dataset_idx[cut:]
+        cut1 = int(len(self.dataset_idx)*self.splits[0])
+        cut2 = int(len(self.dataset_idx)*self.splits[1])
+        self.test_idx = self.dataset_idx[:cut1]
+        self.train_idx = self.dataset_idx[cut1:cut1+cut2]
+        self.val_idx = self.dataset_idx[cut1+cut2:]
         random.seed()
-
+        
     def __iter__(self):
         if self.flag == 'train':
             return iter(self.train_idx)
@@ -225,8 +237,9 @@ class Selector(Sampler):
         self.flag = flag
         return self
     
-    def sample_train_val_idx(self):
-        cut = int(len(self.train_val_idx)*self.split)
-        random.shuffle(self.train_val_idx)
-        self.val_idx = self.train_val_idx[:cut]
-        self.train_idx = self.train_val_idx[cut:]
+    def shuffle_train_val_idx(self):
+        if self.set_seed:
+            random.seed(self.set_seed)
+        random.shuffle(self.val_idx)
+        random.shuffle(self.train_idx)
+        random.seed()
