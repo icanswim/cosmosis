@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import device, nn, cuda, optim, no_grad, save, load, cat, from_numpy
+from torch import no_grad, save, load, from_numpy
 from torch.utils.data import Sampler, DataLoader
 
 
