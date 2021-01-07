@@ -21,7 +21,7 @@ class CDataset(Dataset, ABC):
     """
     @abstractmethod
     def __init__(self, in_file='./data/datafile'):
-        self.load_data(in_file)
+        self.load_data()
         self.embed = []  # [(n_vocab, len_vec, param.requires_grad),...]
         self.ds_idx = []  # list of the dataset's indices
     
