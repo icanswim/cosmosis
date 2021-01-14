@@ -20,17 +20,25 @@ class CDataset(Dataset, ABC):
         of the __getitem__ methods output.
     """
     @abstractmethod
-    def __init__(self, in_file='./data/datafile'):
-        self.load_data()
-        self.embed = []  # [(n_vocab, len_vec, param.requires_grad),...]
-        self.ds_idx = []  # list of the dataset's indices
+    def __init__ (self, features=[], targets=[], pad=False,  
+                  embed=[], in_file='./data/dataset/datafile'):
+        
+        self.features, self.targets = features, targets
+        self.pad, self.embed, self.in_file = pad, embed, in_file
+        
+        self.datadic = self.load_data()
+        self.ds_idx = list(self.datadic.keys())
     
     @abstractmethod
     def __getitem__(self, i):
         """set X and y and do preprocessing here
         Return continuous, categorical, target.  empty list if none.
+        x_con = np array of continuous float32 values
+        x_cat = np array of whole int64 values.  
+            x_cat is passed in a list for multiple embeddings
+        target = np array of whole or continuous float64 values
         """
-        return as_tensor(x_con[i]), as_tensor(x_cat[i]), as_tensor(target[i])  
+        return as_tensor(x_con[i]), [as_tensor(x_cat[i]),...], as_tensor(target[i])  
     
     @abstractmethod
     def __len__(self):
@@ -40,10 +48,6 @@ class CDataset(Dataset, ABC):
     def load_data(self):
         return data
     
-    def pad_data(self):
-        """TODO: pad in multiple dimensions and trim"""
-        pass
-
     
 class Dummy(CDataset):
     """make = sklearn datasets method name str ('make_regression')

@@ -59,7 +59,7 @@ class Learn():
                                               freeze=self.ds.embed[i][2])
                     print('loading embedding weights...')
                 except:
-                    print('no embedding weights found.  reinitializing... ')
+                    print('no embedding weights found.  initializing... ')
                     
         if adapt: 
             model.adapt(adapt)
