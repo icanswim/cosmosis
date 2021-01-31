@@ -14,19 +14,19 @@ class CModel(nn.Module):
     
     self.embeddings = embedding_layer() method checks the QDatasets embed 
     requirements and creates a list of embedding layers as appropriate"""
-    def __init__(self, embed=[]):
+    def __init__(self, embed=[], padding_idx=None):
         super().__init__()
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
         
-    def embedding_layer(self, embed):
+    def embedding_layer(self, embed, padding_idx=None):
         if len(embed) == 0:
             return None
         else:
-            embeddings = [nn.Embedding(voc, vec, padding_idx=None).to('cuda:0') for voc, vec, _ in embed]
+            embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') for _, voc, vec, _ in embed]
             for i, e in enumerate(embed):
                 param = embeddings[i].weight
-                param.requires_grad = e[2]
+                param.requires_grad = e[3]
             return embeddings
 
     def forward(self, x_con, x_cat):
@@ -61,11 +61,11 @@ class CModel(nn.Module):
         for l in self.ffunit(shape[0], shape[1], 0.2)[::-1]:
             self.layers.insert(0, l)
             
-    def ffunit(self, D_in, D_out, drop):
+    def ffunit(self, D_in, D_out, drop, activation=nn.SELU):
         ffu = []
         ffu.append(nn.BatchNorm1d(D_in))
         ffu.append(nn.Linear(D_in, D_out))
-        ffu.append(nn.SELU())
+        ffu.append(activation())
         ffu.append(nn.Dropout(drop))
         return ffu
     
@@ -77,7 +77,7 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0, embed=[]):
+    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0, embed=[], padding_idx=None):
         super().__init__()
         
         config = FFNet.model_config[model_name]
@@ -89,4 +89,9 @@ class FFNet(CModel):
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.layers = nn.ModuleList(self.layers)  
     
-        self.embeddings = self.embedding_layer(embed)
+        self.embeddings = self.embedding_layer(embed, padding_idx)
+        
+class Encoder(CModel):
+    
+    def __init__(self, D_in=0, H=0, D_out=0, embed=[]):
+        super().__init__()

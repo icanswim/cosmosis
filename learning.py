@@ -83,7 +83,12 @@ class Learn():
                 self.run('train')
                 with no_grad():
                     self.run('val')
-                if e % int(epochs/10) == 0:
+                if epochs > 10:
+                    if e % int(epochs/10) == 0:
+                        print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
+                                format(e, epochs, self.train_log[-1], self.val_log[-1], 
+                                                       self.opt.param_groups[0]['lr']))
+                else:
                     print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
                             format(e, epochs, self.train_log[-1], self.val_log[-1], 
                                                    self.opt.param_groups[0]['lr']))

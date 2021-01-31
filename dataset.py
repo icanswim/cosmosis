@@ -13,11 +13,15 @@ from sklearn import datasets
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    embed = [(n_vocab, len_vec, param.requires_grad),...]
-        The dataset reports if it has any categorical values it needs
-        to encode and whether or not to train the embedding or fix it as a onehot
-        and then serves up the values to be encoded as the x_cat component
-        of the __getitem__ methods output.
+    The dataset reports if it has any categorical values it needs
+    to encode and whether or not to train the embedding or fix it as a onehot
+    and then serves up the values to be encoded as the x_cat component
+    of the __getitem__ methods output.
+    
+    features=['feature','feature',...]
+    targets=['feature',...]
+    pad=False/int
+    embed=['feature',voc,vec,padding_idx,param.requires_grad]
     """
     @abstractmethod
     def __init__ (self, features=[], targets=[], pad=False,  
@@ -34,9 +38,8 @@ class CDataset(Dataset, ABC):
         """set X and y and do preprocessing here
         Return continuous, categorical, target.  empty list if none.
         x_con = np array of continuous float32 values
-        x_cat = np array of whole int64 values.  
-            x_cat is passed in a list for multiple embeddings
-        target = np array of whole or continuous float64 values
+        x_cat = list of np array discreet int64 values
+        target = np array of discreet or continuous float64 values
         """
         return as_tensor(x_con[i]), [as_tensor(x_cat[i]),...], as_tensor(target[i])  
     
@@ -49,26 +52,29 @@ class CDataset(Dataset, ABC):
         return data
     
     
-class Dummy(CDataset):
+class SKmake(CDataset):
     """make = sklearn datasets method name str ('make_regression')
     make_params = dict of parameters ({'n_samples': 100})
+    embed=['feature',voc,vec,padding_idx,param.requires_grad]
+    
+    subclass amd implement __getitem__ as needed
     """
-    def __init__(self, make='make_regression', make_params={'n_samples': 100,
-                                                            'n_features': 128}):
+    def __init__(self, make='make_regression', embed=[], 
+                 make_params={'n_samples': 100, 'n_features': 128}):
         self.load_data(make, make_params)
-        self.ds_idx = list(range(self.y.shape[0]))
-        self.embed = []
+        self.ds_idx = list(range(self.data[0].shape[0]))
+        self.embed = embed
         
     def __getitem__(self, i):
-        return as_tensor(np.reshape(self.X[i], -1).astype(np.float32)), [], \
-                        as_tensor(np.reshape(self.y[i], -1).astype(np.float32))
+        return as_tensor(np.reshape(self.data[0][i], -1).astype(np.float32)), [], \
+                        as_tensor(np.reshape(self.data[1][i], -1).astype(np.float32))
     
     def __len__(self):
-        return self.y.shape[0]
+        return self.data[0].shape[0]
 
     def load_data(self, make, make_params):
         ds = getattr(datasets, make)
-        self.X, self.y = ds(**make_params)
+        self.data = ds(**make_params)
         
         
 class SuperSet(CDataset):
