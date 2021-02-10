@@ -8,7 +8,9 @@ import numpy as np
 from torch.utils.data import Dataset, IterableDataset, ConcatDataset
 from torch import as_tensor, cat
 
-from sklearn import datasets
+from torchvision import datasets as tvds
+
+from sklearn import datasets as skds
 
 
 class CDataset(Dataset, ABC):
@@ -51,9 +53,35 @@ class CDataset(Dataset, ABC):
     def load_data(self):
         return data
     
+class TVDS(CDataset):
+    """A wrapper for torchvision.datasets
+    dataset = torchvision datasets class name str ('FakeData')
+    make_params = dict of parameters ({'size': 1000})
+    embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
-class SKmake(CDataset):
-    """make = sklearn datasets method name str ('make_regression')
+    subclass amd implement __getitem__ as needed
+    """
+    def __init__(self, dataset='FakeData', embed=[], 
+                 ds_params={'size': 1000, 'image_size': (3,244,244),
+                            'num_classes': 10, 'transform': None,
+                            'target_transform': None}):
+        self.load_data(dataset, ds_params)
+        self.ds_idx = list(range(len(self.ds)))
+        self.embed = embed
+        
+    def __getitem__(self, i):
+        return self.ds[i]
+    
+    def __len__(self):
+        return len(self.ds)
+
+    def load_data(self, dataset, ds_params):
+        ds = getattr(tvds, dataset)
+        self.ds = ds(**ds_params)
+        
+class SKDS(CDataset):
+    """A wrapper for sklearn.datasets
+    make = sklearn datasets method name str ('make_regression')
     make_params = dict of parameters ({'n_samples': 100})
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
@@ -73,10 +101,10 @@ class SKmake(CDataset):
         return self.data[0].shape[0]
 
     def load_data(self, make, make_params):
-        ds = getattr(datasets, make)
+        ds = getattr(skds, make)
         self.data = ds(**make_params)
         
-        
+
 class SuperSet(CDataset):
     
     def __init__(self, PrimaryDS, SecondaryDS, p_params, s_params):
