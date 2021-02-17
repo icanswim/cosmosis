@@ -25,7 +25,7 @@ class Learn():
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, 
                  adapt=False, load_model=False, load_embed=False, save_model=False,
-                 batch_size=1, epochs=1):
+                 batch_size=10, epochs=1):
         
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         start = datetime.now()
@@ -140,14 +140,15 @@ class Learn():
                                 drop_last=drop_last, timeout=0, worker_init_fn=None)
   
         def to_cuda(data):
-            if len(data) == 0: return []
+            if len(data) == 0: return None
             else: return data.to('cuda:0', non_blocking=True)
 
-        for x_con, x_cat, y in dataloader:
+        for  X, y, embed in dataloader:
             i += self.bs
-            x_con = to_cuda(x_con)
-            x_cat = [to_cuda(cat) for cat in x_cat]
-            y_pred = self.model(x_con, x_cat)
+            X = to_cuda(X)
+            embed = [to_cuda(emb) for emb in embed]
+            
+            y_pred = self.model(X=X, embed=embed)
             
             if flag == 'infer':
                 y = np.reshape(y, (-1, 1)) # y = 'id'

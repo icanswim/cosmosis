@@ -1,8 +1,22 @@
 from abc import ABC, abstractmethod
-from torch import nn, cat, squeeze, softmax, Tensor, flatten
-from torch.nn import functional as F
+
 from math import sqrt
 
+from torch import nn, cat, squeeze, softmax, Tensor, flatten
+from torch.nn import functional as F
+
+import torchvision.models as torchvisionmodels
+
+
+def tv_model(model_name='resnet18', D_in=0, D_out=0, embed=[], tv_params={}):
+
+    launcher = getattr(torchvisionmodels, model_name)
+    model = launcher(**tv_params)
+    
+    if model_name in ['resnet18']:
+        model.fc = nn.Linear(D_in, D_out)
+
+    return model
 
 class CModel(nn.Module):
     """A base class for cosmosis models
@@ -14,13 +28,13 @@ class CModel(nn.Module):
     
     self.embeddings = embedding_layer() method checks the QDatasets embed 
     requirements and creates a list of embedding layers as appropriate"""
-    def __init__(self, embed=[]):
+    def __init__(self, embed=None):
         super().__init__()
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
         
     def embedding_layer(self, embed):
-        if len(embed) == 0:
+        if not embed:
             return None
         else:
             embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
@@ -30,28 +44,26 @@ class CModel(nn.Module):
                 param.requires_grad = e[4]
             return embeddings
 
-    def forward(self, x_con, x_cat):
+    def forward(self, X=None, embed=None):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model.  
-        x_cat = list of torch cuda tensors which are the embedding indices
-        x_con = torch cuda tensor of concatenated continuous feature vectors"""
-        if len(x_cat) != 0:
-            emb = []
-            for i in range(len(x_cat)):
-                out = self.embeddings[i](x_cat[i])
-                emb.append(flatten(out, start_dim=1))
-            emb = cat(emb, dim=1)
-            if x_con.shape[1] != 0:
-                x = cat([x_con, emb], dim=1)
+        embed = list of torch tensors which are the embedding indices
+        X = torch tensor of concatenated continuous feature vectors"""
+        if embed:
+            embedded = []
+            for i in range(len(embed)):
+                out = self.embeddings[i](embed[i])
+                embedded.append(flatten(out, start_dim=1))
+            embedded = cat(emb, dim=1)
+            if X:
+                X = cat([X, embedded], dim=1)
             else:  
-                x = emb    
-        else:
-            x = x_con
+                X = embedded 
         
         for l in self.layers:
-            x = l(x)
-        return x
-        
+            X = l(X)
+        return X
+    
     def adapt(self, shape):
         """for adapting a dataset shape[0] to a saved model shape[1]
         shape = (data_shape, model_shape)"""
@@ -92,7 +104,9 @@ class FFNet(CModel):
     
         self.embeddings = self.embedding_layer(embed)
         
-class Encoder(CModel):
-    
-    def __init__(self, D_in=0, H=0, D_out=0, embed=[]):
-        super().__init__()
+        
+
+        
+        
+
+        

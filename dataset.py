@@ -9,41 +9,44 @@ from torch.utils.data import Dataset, IterableDataset, ConcatDataset
 from torch import as_tensor, cat
 
 from torchvision import datasets as tvds
+from torchvision import transforms as tvt
 
 from sklearn import datasets as skds
 
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    The dataset reports if it has any categorical values it needs
-    to encode and whether or not to train the embedding or fix it as a onehot
-    and then serves up the values to be encoded as the x_cat component
-    of the __getitem__ methods output.
     
-    features=['feature','feature',...]
-    targets=['feature',...]
-    pad=False/int
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
+        'feature' = name/key of feature to be embedded
+        voc = vocabulary size (int)
+        vec = length of the embedding vectors
+        padding_idx = False/int
+        param.requires_grad = True/False
+    
     """
+    #embed_lookup = {'category_a': 1,
+    #                'category_b': 2}
+    
     @abstractmethod
-    def __init__ (self, features=[], targets=[], pad=False,  
-                  embed=[], in_file='./data/dataset/datafile'):
+    def __init__ (self, embed=None, in_file='./data/dataset/datafile'):
+        self.embed, self.in_file = embed, in_file
         
-        self.features, self.targets = features, targets
-        self.pad, self.embed, self.in_file = pad, embed, in_file
-        
-        self.datadic = self.load_data()
-        self.ds_idx = list(self.datadic.keys())
+        self.load_data()
+        self.ds_idx = []
     
     @abstractmethod
     def __getitem__(self, i):
-        """set X and y and do preprocessing here
-        Return continuous, categorical, target.  empty list if none.
-        x_con = np array of continuous float32 values
-        x_cat = list of np array discreet int64 values
-        target = np array of discreet or continuous float64 values
         """
-        return as_tensor(x_con[i]), [as_tensor(x_cat[i]),...], as_tensor(target[i])  
+        X = numpy float32 continuous values
+        embed = numpy int 64 embedding indices
+        y = numpy float64 continuous or discreet
+        """
+        X = self.data[0][i]
+        embed = CDataset.embed_lookup[self.data[1][i]]
+        y = self.data[2][i]
+        
+        return as_tensor(X), as_tensor(y) ,[as_tensor(embed),...] 
     
     @abstractmethod
     def __len__(self):
@@ -56,84 +59,64 @@ class CDataset(Dataset, ABC):
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
     dataset = torchvision datasets class name str ('FakeData')
-    make_params = dict of parameters ({'size': 1000})
+    tv_params = dict of torchvision.dataset parameters ({'size': 1000})
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
     subclass amd implement __getitem__ as needed
     """
-    def __init__(self, dataset='FakeData', embed=[], 
-                 ds_params={'size': 1000, 'image_size': (3,244,244),
+    def __init__(self, dataset='FakeData', embed=None, 
+                 tv_params={'size': 1000, 'image_size': (3,244,244),
                             'num_classes': 10, 'transform': None,
                             'target_transform': None}):
-        self.load_data(dataset, ds_params)
+        self.load_data(dataset, tv_params)
         self.ds_idx = list(range(len(self.ds)))
         self.embed = embed
         
     def __getitem__(self, i):
-        return self.ds[i]
+        
+        X = self.ds[i][0]
+        y = self.ds[i][1]
+
+        return as_tensor(X), as_tensor(y), []
     
     def __len__(self):
         return len(self.ds)
 
-    def load_data(self, dataset, ds_params):
+    def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)
-        self.ds = ds(**ds_params)
+        if tv_params['transform']:
+            transforms = tvt.Compose([tvt.ToTensor()])
+            tv_params['transform'] = transforms
+        if tv_params['target_transform']:
+            target_transforms = tvt.Compose([tvt.ToTensor()])
+            tv_params['target_transform'] = target_transforms
+        self.ds = ds(**tv_params)
+        
         
 class SKDS(CDataset):
     """A wrapper for sklearn.datasets
     make = sklearn datasets method name str ('make_regression')
-    make_params = dict of parameters ({'n_samples': 100})
+    sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
     subclass amd implement __getitem__ as needed
     """
-    def __init__(self, make='make_regression', embed=[], 
-                 make_params={'n_samples': 100, 'n_features': 128}):
-        self.load_data(make, make_params)
+    def __init__(self, make='make_regression', embed=None, 
+                 sk_params={'n_samples': 100, 'n_features': 128}):
+        self.load_data(make, sk_params)
         self.ds_idx = list(range(self.data[0].shape[0]))
         self.embed = embed
         
     def __getitem__(self, i):
-        return as_tensor(np.reshape(self.data[0][i], -1).astype(np.float32)), [], \
-                        as_tensor(np.reshape(self.data[1][i], -1).astype(np.float32))
+        X = self.data[0][i].astype(np.float32)
+        y = np.reshape(self.data[1][i], -1).astype(np.float32)
+        
+        return as_tensor(X), as_tensor(y), []     
     
     def __len__(self):
         return self.data[0].shape[0]
 
-    def load_data(self, make, make_params):
+    def load_data(self, make, sk_params):
         ds = getattr(skds, make)
-        self.data = ds(**make_params)
+        self.data = ds(**sk_params)
         
-
-class SuperSet(CDataset):
-    
-    def __init__(self, PrimaryDS, SecondaryDS, p_params, s_params):
-        self.pds = PrimaryDS(**p_params)
-        self.sds = SecondaryDS(**s_params)
-        
-        self.embed = self.pds.embed + self.sds.embed
-        self.ds_idx = self.pds.ds_idx 
-        
-    def __getitem__(self, i):
-        # lookup the molecule name used by the primary ds and use it to select data from 
-        # the secondary ds and then concatenate both outputs and return it
-        x_con1, x_cat1, y1 = self.pds[i]
-        x_con2, x_cat2, y2 = self.sds[self.pds.lookup.iloc[i]]  # TODO H5 ds uses numpy indexing
-       
-        def concat(in1, in2, dim=0):
-            try:
-                return cat([in1, in2], dim=dim)
-            except:
-                if len(in1) != 0: return in1
-                elif len(in2) != 0: return in2
-                else: return []
-                
-        x_con = concat(x_con1, x_con2)
-        x_cat = concat(x_cat1, x_cat2)
-        return x_con, x_cat, y1
-        
-    def __len__(self):
-        return len(self.ds_idx)
-    
-    def load_data(self):
-        pass
