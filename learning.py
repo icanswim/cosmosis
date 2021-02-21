@@ -15,13 +15,13 @@ from torch.utils.data import Sampler, DataLoader
 
 class Learn():
     """
-    save_model = True/False
-    load_model = False/'./models/savedmodel.pth'
-    Criterion = None implies inference mode.
-    adapt = False/(dataset input shape, model input shape)
-    TODO early stopping
+    Datasets = [TrainDS, ValDS, TestDS]
+        if 1 DS is given it is split into train/val/test using splits param
+        if 2 DS are given first one is train/val second is test
+        if 3 DS are given first is train second is val third is test
     """
-    def __init__(self, Dataset, Model, Sampler, Optimizer=None, Scheduler=None, Criterion=None, 
+    def __init__(self, Datasets, Model, Sampler, 
+                 Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, 
                  adapt=False, load_model=False, load_embed=False, save_model=False,
@@ -32,15 +32,12 @@ class Learn():
         logging.info('New experiment...\n\n model: {}, start time: {}'.format(
                                         Model, start.strftime('%Y%m%d_%H%M')))
         self.bs = batch_size
-        self.ds = Dataset(**ds_params)
-        logging.info('dataset: {}\n{}'.format(type(self.ds), ds_params))
-        logging.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
-                                    epochs, batch_size, save_model, load_model))
-        print('{} dataset created...'.format(type(self.ds)))
+        self.ds_params = ds_params
+        self.dataset_manager(Datasets, Sampler, **ds_params, **sampler_params)
         
         if load_model:
             try:
-                model = Model(embed=self.ds.embed, **model_params)
+                model = Model(embed=self.ds_params['embed'], **model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
@@ -48,7 +45,7 @@ class Learn():
                 print('model loaded from pickle...')                                                   
                 
         else:
-            model = Model(embed=self.ds.embed, **model_params)
+            model = Model(embed=self.ds_params['embed'], **model_params)
         
         if load_embed:
             for i, embedding in enumerate(model.embeddings):
@@ -63,12 +60,13 @@ class Learn():
                     
         if adapt: 
             model.adapt(adapt)
-            
         self.model = model.to('cuda:0')
-        logging.info(self.model.children)
         
-        self.sampler = Sampler(self.ds.ds_idx, **sample_params)
+        logging.info(self.model.children)
+        logging.info('dataset: {}\n{}'.format(Datasets, self.ds_params))
         logging.info('sampler: {}\n{}'.format(type(self.sampler), sample_params))
+        logging.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+                                    epochs, batch_size, save_model, load_model))
         
         if Criterion:
             self.criterion = Criterion(**crit_params).to('cuda:0')
@@ -123,22 +121,33 @@ class Learn():
         
         if flag == 'train': 
             self.model.training = True
+            dataset = self.train_ds
+            sampler = self.sampler(flag=flag)
             drop_last = True
+            
         if flag == 'val':
             self.model.training = False
+            dataset = self.val_ds
+            sampler = self.sampler(flag=flag)
             drop_last = True
+
         if flag == 'test':
             self.model.training = False
-            drop_last = True
-        if flag == 'infer':
-            self.model.training = False
+            dataset = self.test_ds
+            sampler = self.sampler(flag=flag)
             drop_last = False
             
-        dataloader = DataLoader(self.ds, batch_size=self.bs, shuffle=False, 
-                                sampler=self.sampler(flag=flag), batch_sampler=None, 
-                                num_workers=8, collate_fn=None, pin_memory=True, 
-                                drop_last=drop_last, timeout=0, worker_init_fn=None)
-  
+        if flag == 'infer':
+            self.model.training = False
+            dataset = self.test_ds
+            sampler = self.sampler(flag=flag)
+            drop_last = False
+            
+        dataloader = DataLoader(dataset, batch_size=self.bs, 
+                                sampler=self.sampler(flag=flag), 
+                                num_workers=8, pin_memory=True, 
+                                            drop_last=drop_last)
+        
         def to_cuda(data):
             if len(data) == 0: return None
             else: return data.to('cuda:0', non_blocking=True)
@@ -146,9 +155,11 @@ class Learn():
         for  X, y, embed in dataloader:
             i += self.bs
             X = to_cuda(X)
-            embed = [to_cuda(emb) for emb in embed]
-            
-            y_pred = self.model(X=X, embed=embed)
+            if len(embed) > 0:
+                embed = [to_cuda(emb) for emb in embed]
+                y_pred = self.model(X, embed)
+            else:
+                y_pred = self.model(X)
             
             if flag == 'infer':
                 y = np.reshape(y, (-1, 1)) # y = 'id'
@@ -184,7 +195,29 @@ class Learn():
                                     header=['id','scalar_coupling_constant'], 
                                     index=False)
             print('inference complete and saved to csv...')
+    
+    def dataset_manager(self, Datasets, Sampler, ds_params):
+        try:
+            if len(Datasets) == 1:
+                self.ds = Datasets[0](**ds_params)
+                self.sampler = Sampler(ds_idx=self.ds.ds_idx, **sample_params)
 
+            if len(Datasets) == 2:
+                self.train_ds = Datasets[0](**ds_params['train_params'])
+                self.test_ds = Dataset[1](**ds_params['test_params'])
+                self.sampler = Sampler(train_idx=self.train_ds, test_idx=self.test_idx)
+
+            if len(Datasets) == 3:
+                self.train_ds = Datasets[0](**ds_params['train_params'])
+                self.val_ds = Dataset[1](**ds_params['val_params'])
+                self.test_ds = Dataset[2](**ds_params['test_params'])
+                self.sampler = Sampler(train_idx=self.train_idx, val_idx=self.val_idx, 
+                                                                   test_idx=self.test_idx)
+        except:
+            print('dataset_manager error...')
+            
+    
+    
     @classmethod    
     def view_log(cls, log_file):
         log = pd.read_csv(log_file)
@@ -192,31 +225,31 @@ class Learn():
         plt.show()
 
 class Selector(Sampler):
-    """A base class for subset selection for creating train, validation and test sets.
-    Very fast, optimized for large datasets.  It is also possible to do filtering here 
-    or at the dataset level.  
-    subset = create randomly selected subset of size = set_size*subset
-    splits = (test,train) remainer = val set
-    set_seed = False/seed for reproducible train/val/test set selection
-    TODO memory optimization
+    """
+    1. one dataset class initiated once and split into train, val and test
+    2. one dataset class initiated three times once each for train, val and test
+    3. two dataset class each initiated once with for the test and the other split into train and val
+    
+    splits=(train,test)/None remainder = val cannot sum to greater than 1 but can be less than 1
     """
    
-    def __init__(self, dataset_idx, splits=(.1,.8), subset=False, set_seed=False):
-        self.set_seed = set_seed
-        self.splits = splits 
-        if subset:
-            self.dataset_idx = random.sample(dataset_idx, int(len(dataset_idx)*subset))
-        else:    
-            self.dataset_idx = dataset_idx
+    def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
+                 splits=(.7,.15), set_seed=False):
         
-        if self.set_seed: 
-            random.seed(self.set_seed)
-        random.shuffle(self.dataset_idx)
-        cut1 = int(len(self.dataset_idx)*self.splits[0])
-        cut2 = int(len(self.dataset_idx)*self.splits[1])
-        self.test_idx = self.dataset_idx[:cut1]
-        self.train_idx = self.dataset_idx[cut1:cut1+cut2]
-        self.val_idx = self.dataset_idx[cut1+cut2:]
+        if set_seed: random.seed(set_seed)
+                        
+        if splits:  
+            random.shuffle(self.dataset_idx)
+            cut1 = int(len(self.dataset_idx)*self.splits[1])
+            cut2 = int(len(self.dataset_idx)*self.splits[0])
+            self.test_idx = self.dataset_idx[:cut1]
+            self.train_idx = self.dataset_idx[cut1:cut1+cut2]
+            self.val_idx = self.dataset_idx[cut1+cut2:]
+        else:
+            self.test_idx = self.dataset_idx
+            self.train_idx = self.dataset_idx
+            self.val_idx = self.dataset_idx
+        
         random.seed()
         
     def __iter__(self):

@@ -9,7 +9,6 @@ from torch.utils.data import Dataset, IterableDataset, ConcatDataset
 from torch import as_tensor, cat
 
 from torchvision import datasets as tvds
-from torchvision import transforms as tvt
 
 from sklearn import datasets as skds
 
@@ -29,9 +28,9 @@ class CDataset(Dataset, ABC):
     #                'category_b': 2}
     
     @abstractmethod
-    def __init__ (self, embed=None, in_file='./data/dataset/datafile'):
-        self.embed, self.in_file = embed, in_file
-        
+    def __init__ (self, transform=None, target_transform=None):
+        self.transform = transform
+        self.target_transform = target_transform
         self.load_data()
         self.ds_idx = []
     
@@ -43,10 +42,16 @@ class CDataset(Dataset, ABC):
         y = numpy float64 continuous or discreet
         """
         X = self.data[0][i]
-        embed = CDataset.embed_lookup[self.data[1][i]]
+        if self.transform is not None:
+            X = self.transform(X)
+            
         y = self.data[2][i]
+        if self.target_transform is not None:
+            y = self.target_transform(y)
+            
+        embed = CDataset.embed_lookup[self.data[1][i]]
         
-        return as_tensor(X), as_tensor(y) ,[as_tensor(embed),...] 
+        return X, y ,[as_tensor(embed),...] 
     
     @abstractmethod
     def __len__(self):
@@ -55,6 +60,7 @@ class CDataset(Dataset, ABC):
     @abstractmethod
     def load_data(self):
         return data
+    
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
@@ -77,19 +83,13 @@ class TVDS(CDataset):
         X = self.ds[i][0]
         y = self.ds[i][1]
 
-        return as_tensor(X), as_tensor(y), []
+        return X, y, []
     
     def __len__(self):
         return len(self.ds)
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)
-        if tv_params['transform']:
-            transforms = tvt.Compose([tvt.ToTensor()])
-            tv_params['transform'] = transforms
-        if tv_params['target_transform']:
-            target_transforms = tvt.Compose([tvt.ToTensor()])
-            tv_params['target_transform'] = target_transforms
         self.ds = ds(**tv_params)
         
         
