@@ -8,13 +8,14 @@ from torch.nn import functional as F
 import torchvision.models as torchvisionmodels
 
 
-def tv_model(model_name='resnet18', D_in=0, D_out=0, embed=[], tv_params={}):
+def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
 
     launcher = getattr(torchvisionmodels, model_name)
     model = launcher(**tv_params)
     
     if model_name in ['resnet18']:
-        model.fc = nn.Linear(D_in, D_out)
+        model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
+                                kernel_size=7, stride=2, padding=3, bias=False)
 
     return model
 

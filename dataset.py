@@ -81,7 +81,7 @@ class TVDS(CDataset):
     def __getitem__(self, i):
         
         X = self.ds[i][0]
-        y = self.ds[i][1]
+        y = np.reshape(np.asarray(self.ds[i][1]), -1).astype(np.float64)
 
         return X, y, []
     
