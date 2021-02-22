@@ -96,7 +96,7 @@ class Learn():
             pd.DataFrame(zip(self.train_log, self.val_log)).to_csv(
                                         './logs/'+start.strftime("%Y%m%d_%H%M"))
             self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
-        else: 
+        else: # no Criterion implies inference mode
             with no_grad():
                 self.run('infer')
         
@@ -226,25 +226,30 @@ class Learn():
         plt.show()
 
 class Selector(Sampler):
+    """splits = (train/val/test) splits the dataset_idx, does not overwrite 
+    """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
                  splits=(.7,.15), set_seed=False):
         
-        self.dataset_idx = dataset_idx
+        if dataset_idx == None:  
+            self.dataset_idx = train_idx
+        else:
+            self.dataset_idx = dataset_idx
+            
+        self.train_idx, self.val_idx, self.test_idx = train_idx, val_idx, test_idx
         
         if set_seed: random.seed(set_seed)
                         
         if splits:  
             random.shuffle(self.dataset_idx)
-            cut1 = int(len(self.dataset_idx)*splits[1])
-            cut2 = int(len(self.dataset_idx)*splits[0])
-            self.test_idx = self.dataset_idx[:cut1]
-            self.train_idx = self.dataset_idx[cut1:cut1+cut2]
-            self.val_idx = self.dataset_idx[cut1+cut2:]
-        else:
-            self.test_idx = test_idx
-            self.train_idx = train_idx
-            self.val_idx = val_idx
+            cut1 = int(len(self.dataset_idx)*splits[0])
+            cut2 = int(len(self.dataset_idx)*splits[1])
+            self.train_idx = self.dataset_idx[:cut1]
+            if self.val_idx == None:
+                self.val_idx = self.dataset_idx[cut1:cut1+cut2]
+            if self.test_idx == None:
+                self.test_idx = self.dataset_idx[cut1+cut2:]
         
         random.seed()
         
