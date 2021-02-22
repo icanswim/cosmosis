@@ -33,7 +33,7 @@ class Learn():
                                         Model, start.strftime('%Y%m%d_%H%M')))
         self.bs = batch_size
         self.ds_params = ds_params
-        self.dataset_manager(Datasets, Sampler, **ds_params, **sampler_params)
+        self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
         if load_model:
             try:
@@ -53,7 +53,7 @@ class Learn():
                     weight = np.load('./models/{}_{}_embedding_weight.npy'.format(
                                                                 load_embed, i))
                     embedding.from_pretrained(from_numpy(weight), 
-                                              freeze=self.ds.embed[i][2])
+                                              freeze=self.ds_params['embed'][i][2])
                     print('loading embedding weights...')
                 except:
                     print('no embedding weights found.  initializing... ')
@@ -196,28 +196,29 @@ class Learn():
                                     index=False)
             print('inference complete and saved to csv...')
     
-    def dataset_manager(self, Datasets, Sampler, ds_params):
-        try:
-            if len(Datasets) == 1:
-                self.ds = Datasets[0](**ds_params)
-                self.sampler = Sampler(ds_idx=self.ds.ds_idx, **sample_params)
+    def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
+        
+        if len(Datasets) == 1:
+            self.train_ds = Datasets[0](**ds_params['ds_params'])
+            self.val_ds = self.test_ds = self.train_ds
+            self.sampler = Sampler(dataset_idx=self.train_ds.ds_idx, 
+                                   **sample_params)
+        if len(Datasets) == 2:
+            self.train_ds = Datasets[0](**ds_params['train_params'])
+            self.val_ds = self.train_ds
+            self.test_ds = Datasets[1](**ds_params['test_params'])
+            self.sampler = Sampler(train_idx=self.train_ds.ds_idx, 
+                                   test_idx=self.test_ds.ds_idx,
+                                   **sample_params)
+        if len(Datasets) == 3:
+            self.train_ds = Datasets[0](**ds_params['train_params'])
+            self.val_ds = Datasets[1](**ds_params['val_params'])
+            self.test_ds = Datasets[2](**ds_params['test_params'])
+            self.sampler = Sampler(train_idx=self.train_ds.ds_idx, 
+                                   val_idx=self.val_ds.ds_idx, 
+                                   test_idx=self.test_ds.ds_idx,
+                                   **sample_params)
 
-            if len(Datasets) == 2:
-                self.train_ds = Datasets[0](**ds_params['train_params'])
-                self.test_ds = Dataset[1](**ds_params['test_params'])
-                self.sampler = Sampler(train_idx=self.train_ds, test_idx=self.test_idx)
-
-            if len(Datasets) == 3:
-                self.train_ds = Datasets[0](**ds_params['train_params'])
-                self.val_ds = Dataset[1](**ds_params['val_params'])
-                self.test_ds = Dataset[2](**ds_params['test_params'])
-                self.sampler = Sampler(train_idx=self.train_idx, val_idx=self.val_idx, 
-                                                                   test_idx=self.test_idx)
-        except:
-            print('dataset_manager error...')
-            
-    
-    
     @classmethod    
     def view_log(cls, log_file):
         log = pd.read_csv(log_file)
@@ -225,30 +226,25 @@ class Learn():
         plt.show()
 
 class Selector(Sampler):
-    """
-    1. one dataset class initiated once and split into train, val and test
-    2. one dataset class initiated three times once each for train, val and test
-    3. two dataset class each initiated once with for the test and the other split into train and val
-    
-    splits=(train,test)/None remainder = val cannot sum to greater than 1 but can be less than 1
-    """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
                  splits=(.7,.15), set_seed=False):
+        
+        self.dataset_idx = dataset_idx
         
         if set_seed: random.seed(set_seed)
                         
         if splits:  
             random.shuffle(self.dataset_idx)
-            cut1 = int(len(self.dataset_idx)*self.splits[1])
-            cut2 = int(len(self.dataset_idx)*self.splits[0])
+            cut1 = int(len(self.dataset_idx)*splits[1])
+            cut2 = int(len(self.dataset_idx)*splits[0])
             self.test_idx = self.dataset_idx[:cut1]
             self.train_idx = self.dataset_idx[cut1:cut1+cut2]
             self.val_idx = self.dataset_idx[cut1+cut2:]
         else:
-            self.test_idx = self.dataset_idx
-            self.train_idx = self.dataset_idx
-            self.val_idx = self.dataset_idx
+            self.test_idx = test_idx
+            self.train_idx = train_idx
+            self.val_idx = val_idx
         
         random.seed()
         
