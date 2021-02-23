@@ -80,9 +80,11 @@ class TVDS(CDataset):
         
     def __getitem__(self, i):
         
-        X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
+        X = self.ds[i][0]
+        #y = self.ds[i][1]
+        #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
         y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
-
+        
         return X, y, []
     
     def __len__(self):

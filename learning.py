@@ -42,8 +42,7 @@ class Learn():
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
-                print('model loaded from pickle...')                                                   
-                
+                print('model loaded from pickle...')                                                      
         else:
             model = Model(embed=self.ds_params['embed'], **model_params)
         
@@ -197,7 +196,7 @@ class Learn():
             print('inference complete and saved to csv...')
     
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
-        
+    
         if len(Datasets) == 1:
             self.train_ds = Datasets[0](**ds_params['ds_params'])
             self.val_ds = self.test_ds = self.train_ds
