@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy
+from torch import no_grad, save, load, from_numpy, squeeze
 from torch.utils.data import Sampler, DataLoader
 
 
@@ -167,7 +167,7 @@ class Learn():
                 predictions.append(np.concatenate((y, y_pred), axis=1)) 
             else:
                 y = to_cuda(y)
-                self.opt.zero_grad()           
+                self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if flag == 'train':
@@ -231,6 +231,7 @@ class Selector(Sampler):
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
                  splits=(.7,.15), set_seed=False):
+        self.set_seed = set_seed
         
         if dataset_idx == None:  
             self.dataset_idx = train_idx
@@ -239,7 +240,8 @@ class Selector(Sampler):
             
         self.train_idx, self.val_idx, self.test_idx = train_idx, val_idx, test_idx
         
-        if set_seed: random.seed(set_seed)
+        if set_seed: 
+            random.seed(set_seed)
                         
         if splits:  
             random.shuffle(self.dataset_idx)
@@ -278,5 +280,9 @@ class Selector(Sampler):
         return self
     
     def shuffle_train_val_idx(self):
+        
+        if self.set_seed:
+            random.seed(self.set_seed)
         random.shuffle(self.val_idx)
         random.shuffle(self.train_idx)
+        random.seed()
