@@ -22,38 +22,37 @@ class CDataset(Dataset, ABC):
         vec = length of the embedding vectors
         padding_idx = False/int
         param.requires_grad = True/False
+        
+        embed parameter signals the dataset internally as to which categorical
+        features to present for embedding AND signals the model to embed
+        
+    self.ds_idx = list of indices or keys to be used by the Sampler and Dataloader
     
-    """
-    #embed_lookup = {'category_a': 1,
-    #                'category_b': 2}
-    
-    @abstractmethod
-    def __init__ (self, transform=None, target_transform=None):
-        self.transform = transform
-        self.target_transform = target_transform
-        self.load_data()
+    """    
+    def __init__ (self, embeds=[], embeds_lookup={}, transform=False, 
+                  target_transform=None, **kwargs):
+        self.transform, self.target_transform = transform, target_transform
+        self.embeds, self.embeds_lookup = embeds, embeds_lookup
+        self.data = self.load_data(**kwargs)
         self.ds_idx = []
     
-    @abstractmethod
     def __getitem__(self, i):
-        """
-        X = numpy float32 continuous values
-        embed = numpy int 64 embedding indices
-        y = numpy float64 continuous or discreet
-        """
-        X = self.data[0][i]
-        if self.transform is not None:
+
+        X = self.data[i][0].astype(np.float32)
+        if self.transform:
             X = self.transform(X)
             
-        y = self.data[2][i]
-        if self.target_transform is not None:
+        y = self.data[i][1].astype(np.float64)
+        if self.target_transform:
             y = self.target_transform(y)
-            
-        embed = CDataset.embed_lookup[self.data[1][i]]
         
-        return X, y ,[as_tensor(embed),...] 
+        embeds_idx = []
+        for e, embed in enumerate(self.embeds):
+            embeds_idx.append(as_tensor(
+                np.asarray(self.embeds_lookup[embed[0]][self.data[i][2][e]], 'int64')))
+        
+        return as_tensor(X), as_tensor(y), embeds_idx 
     
-    @abstractmethod
     def __len__(self):
         return len(self.ds_idx)
     
@@ -66,11 +65,10 @@ class TVDS(CDataset):
     """A wrapper for torchvision.datasets
     dataset = torchvision datasets class name str ('FakeData')
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
-    embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
     subclass amd implement __getitem__ as needed
     """
-    def __init__(self, dataset='FakeData', embed=None, 
+    def __init__(self, dataset='FakeData', embed=[], 
                  tv_params={'size': 1000, 'image_size': (3,244,244),
                             'num_classes': 10, 'transform': None,
                             'target_transform': None}):
@@ -81,8 +79,9 @@ class TVDS(CDataset):
     def __getitem__(self, i):
         
         X = self.ds[i][0]
-        #y = self.ds[i][1]
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
+        
+        #y = self.ds[i][1]
         y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
         
         return X, y, []
@@ -101,19 +100,33 @@ class SKDS(CDataset):
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
-    subclass amd implement __getitem__ as needed
-    """
-    def __init__(self, make='make_regression', embed=None, 
-                 sk_params={'n_samples': 100, 'n_features': 128}):
+    subclass amd implement __getitem__ or pass in tranforms or both as needed
+    """    
+    def __init__(self, make='make_regression', embed=[], embed_lookup={}, 
+                 transform=None, target_transform=None, sk_params={'n_samples': 100, 
+                                                                   'n_features': 128}):
+        self.embed_lookup = embed_lookup
+        self.transform, self.target_transform = transform, target_transform
         self.load_data(make, sk_params)
         self.ds_idx = list(range(self.data[0].shape[0]))
         self.embed = embed
         
     def __getitem__(self, i):
-        X = self.data[0][i].astype(np.float32)
+
+        X = np.reshape(self.data[0][i], -1).astype(np.float32)
+        if self.transform:
+            X = self.transform(X)
+            
         y = np.reshape(self.data[1][i], -1).astype(np.float32)
+        if self.target_transform:
+            y = self.target_transform(y)
         
-        return as_tensor(X), as_tensor(y), []     
+        embed_idx = []
+        for emb in self.embed:
+            embed_idx.append(as_tensor(
+                self.embed_lookup[self.data[2][i]]).astype(np.int64))
+        
+        return as_tensor(X), as_tensor(y), embed_idx
     
     def __len__(self):
         return self.data[0].shape[0]

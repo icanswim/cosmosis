@@ -19,6 +19,8 @@ class Learn():
         if 1 DS is given it is split into train/val/test using splits param
         if 2 DS are given first one is train/val second is test
         if 3 DS are given first is train second is val third is test
+        
+    Criterion = None implies inference mode
     """
     def __init__(self, Datasets, Model, Sampler, 
                  Optimizer=None, Scheduler=None, Criterion=None, 
@@ -37,14 +39,14 @@ class Learn():
         
         if load_model:
             try:
-                model = Model(embed=self.ds_params['embed'], **model_params)
+                model = Model(**model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
                 print('model loaded from pickle...')                                                      
         else:
-            model = Model(embed=self.ds_params['embed'], **model_params)
+            model = Model(**model_params)
         
         if load_embed:
             for i, embedding in enumerate(model.embeddings):
@@ -279,7 +281,6 @@ class Selector(Sampler):
         return self
     
     def shuffle_train_val_idx(self):
-        
         if self.set_seed:
             random.seed(self.set_seed)
         random.shuffle(self.val_idx)

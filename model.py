@@ -16,20 +16,13 @@ def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
     if model_name in ['resnet18']:
         model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
                                 kernel_size=7, stride=2, padding=3, bias=False)
-
     return model
 
 class CModel(nn.Module):
     """A base class for cosmosis models
-    embed = [(n_vocab, len_vec, param.requires_grad),...]
-        The CDataset reports any categorical values it has to encode and whether 
-        or not to train the embedding or fix it as a onehot
-        and then serves up the values to be encoded as the x_cat component
-        of the __getitem__ method.
-    
-    self.embeddings = embedding_layer() method checks the QDatasets embed 
-    requirements and creates a list of embedding layers as appropriate"""
-    def __init__(self, embed=None):
+    embed = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
+    """
+    def __init__(self, embed=None, **kwargs):
         super().__init__()
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
@@ -47,7 +40,8 @@ class CModel(nn.Module):
 
     def forward(self, X=None, embed=None):
         """check for categorical and/or continuous inputs, get the embeddings and  
-        concat as appropriate, feed to model.  
+        concat as appropriate, feed to model. 
+        
         embed = list of torch tensors which are the embedding indices
         X = torch tensor of concatenated continuous feature vectors"""
         if embed:
