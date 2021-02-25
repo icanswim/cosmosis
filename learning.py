@@ -21,6 +21,10 @@ class Learn():
         if 3 DS are given first is train second is val third is test
         
     Criterion = None implies inference mode
+    
+    TODO: accuracy
+          early stopping/checkpoints
+          inference abstraction
     """
     def __init__(self, Datasets, Model, Sampler, 
                  Optimizer=None, Scheduler=None, Criterion=None, 
@@ -76,7 +80,7 @@ class Learn():
             logging.info('criterion: {}\n{}'.format(type(self.criterion), crit_params))
             logging.info('optimizer: {}\n{}'.format(type(self.opt), opt_params))
 
-            self.train_log, self.val_log = [], []
+            self.train_log, self.val_log, self.lr_log = [], [], []
             for e in range(epochs):
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
@@ -94,8 +98,8 @@ class Learn():
             with no_grad():
                 self.run('test')
                 
-            pd.DataFrame(zip(self.train_log, self.val_log)).to_csv(
-                                        './logs/'+start.strftime("%Y%m%d_%H%M"))
+            pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log)).to_csv(
+                                            './logs/'+start.strftime("%Y%m%d_%H%M"))
             self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
         else: # no Criterion implies inference mode
             with no_grad():
@@ -177,6 +181,7 @@ class Learn():
 
         if flag == 'train': 
             self.train_log.append(e_loss/i)
+            self.lr_log.append(self.opt.param_groups[0]['lr'])
         if flag == 'val': 
             self.val_log.append(e_loss/i)
             self.scheduler.step(e_loss)
@@ -223,7 +228,7 @@ class Learn():
     @classmethod    
     def view_log(cls, log_file):
         log = pd.read_csv(log_file)
-        log.iloc[:,1:3].plot(logy=True)
+        log.iloc[:,1:4].plot(logy=True)
         plt.show()
 
 class Selector(Sampler):

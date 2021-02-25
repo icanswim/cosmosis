@@ -35,6 +35,7 @@ class CDataset(Dataset, ABC):
         self.embeds, self.embeds_lookup = embeds, embeds_lookup
         self.data = self.load_data(**kwargs)
         self.ds_idx = []
+        print('CDataset created...')
     
     def __getitem__(self, i):
 
@@ -75,6 +76,7 @@ class TVDS(CDataset):
         self.load_data(dataset, tv_params)
         self.ds_idx = list(range(len(self.ds)))
         self.embed = embed
+        print('TVDS created...')
         
     def __getitem__(self, i):
         
@@ -110,6 +112,7 @@ class SKDS(CDataset):
         self.load_data(make, sk_params)
         self.ds_idx = list(range(self.data[0].shape[0]))
         self.embed = embed
+        print('SKDS created...')
         
     def __getitem__(self, i):
 
