@@ -25,6 +25,8 @@ class Learn():
     TODO: accuracy
           early stopping/checkpoints
           inference abstraction
+          
+    load_model = False/'saved_model.pth'/'saved_model.pk'
     """
     def __init__(self, Datasets, Model, Sampler, 
                  Optimizer=None, Scheduler=None, Criterion=None, 
@@ -43,14 +45,14 @@ class Learn():
         
         if load_model:
             try:
-                model = Model(**model_params)
+                model = Model(embed=self.ds_params['ds_params']['embed'], **model_params) #fix this
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
                 print('model loaded from pickle...')                                                      
         else:
-            model = Model(**model_params)
+            model = Model(embed=self.ds_params['ds_params']['embed'], **model_params)
         
         if load_embed:
             for i, embedding in enumerate(model.embeddings):

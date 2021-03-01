@@ -22,13 +22,13 @@ class CModel(nn.Module):
     """A base class for cosmosis models
     embed = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
     """
-    def __init__(self, embed=None, **kwargs):
+    def __init__(self, embed=[], **kwargs):
         super().__init__()
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
         
     def embedding_layer(self, embed):
-        if not embed:
+        if len(embed) == 0:
             return None
         else:
             embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
@@ -38,20 +38,22 @@ class CModel(nn.Module):
                 param.requires_grad = e[4]
             return embeddings
 
-    def forward(self, X=None, embed=None):
+    def forward(self, X=None, embed=[]):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model. 
         
-        embed = list of torch tensors which are the embedding indices
+        embed = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
+            ex: [[1,2,1][5]] (2 different embeded features, 3 instances and 1 instance respectively)
         X = torch tensor of concatenated continuous feature vectors"""
-        if embed:
+        if len(embed) > 0:
             embedded = []
-            for i in range(len(embed)):
-                out = self.embeddings[i](embed[i])
+            for e, emb in enumerate(embed):
+                out = self.embeddings[e](emb)
                 embedded.append(flatten(out, start_dim=1))
-            embedded = cat(emb, dim=1)
-            if X:
-                X = cat([X, embedded], dim=1)
+            if len(embedded) > 1:
+                embedded = cat(emb, dim=1)    
+            if X is not None:
+                X = cat([X, *embedded], dim=1)
             else:  
                 X = embedded 
         
