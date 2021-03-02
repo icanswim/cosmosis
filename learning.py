@@ -44,15 +44,17 @@ class Learn():
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
         if load_model:
-            try:
-                model = Model(embed=self.ds_params['ds_params']['embed'], **model_params) #fix this
+            try: #uses the same embed params for all datasets 
+                model = Model(embed=self.ds_params['train_params']['embed'], 
+                                                              **model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
                 print('model loaded from pickle...')                                                      
         else:
-            model = Model(embed=self.ds_params['ds_params']['embed'], **model_params)
+            model = Model(embed=self.ds_params['train_params']['embed'], 
+                                                          **model_params)
         
         if load_embed:
             for i, embedding in enumerate(model.embeddings):
@@ -60,7 +62,7 @@ class Learn():
                     weight = np.load('./models/{}_{}_embedding_weight.npy'.format(
                                                                 load_embed, i))
                     embedding.from_pretrained(from_numpy(weight), 
-                                              freeze=self.ds_params['embed'][i][2])
+                                              freeze=self.ds_params['train_ds']['embed'][i][4])
                     print('loading embedding weights...')
                 except:
                     print('no embedding weights found.  initializing... ')
@@ -207,7 +209,7 @@ class Learn():
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
         if len(Datasets) == 1:
-            self.train_ds = Datasets[0](**ds_params['ds_params'])
+            self.train_ds = Datasets[0](**ds_params['train_params'])
             self.val_ds = self.test_ds = self.train_ds
             self.sampler = Sampler(dataset_idx=self.train_ds.ds_idx, 
                                    **sample_params)

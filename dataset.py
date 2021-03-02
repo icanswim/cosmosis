@@ -29,10 +29,10 @@ class CDataset(Dataset, ABC):
     self.ds_idx = list of indices or keys to be used by the Sampler and Dataloader
     
     """    
-    def __init__ (self, embeds=[], embeds_lookup={}, transform=False, 
+    def __init__ (self, embed=[], embed_lookup={}, transform=False, 
                   target_transform=None, **kwargs):
         self.transform, self.target_transform = transform, target_transform
-        self.embeds, self.embeds_lookup = embeds, embeds_lookup
+        self.embed, self.embed_lookup = embed, embed_lookup
         self.data = self.load_data(**kwargs)
         self.ds_idx = []
         print('CDataset created...')
@@ -47,12 +47,12 @@ class CDataset(Dataset, ABC):
         if self.target_transform:
             y = self.target_transform(y)
         
-        embeds_idx = []
-        for e, embed in enumerate(self.embeds):
-            embeds_idx.append(as_tensor(
-                np.asarray(self.embeds_lookup[embed[0]][self.data[i][2][e]], 'int64')))
+        embed_idx = []
+        for e, embed in enumerate(self.embed):
+            embed_idx.append(as_tensor(
+                np.asarray(self.embed_lookup[embed[0]][self.data[i][2][e]], 'int64')))
         
-        return as_tensor(X), as_tensor(y), embeds_idx 
+        return as_tensor(X), as_tensor(y), embed_idx 
     
     def __len__(self):
         return len(self.ds_idx)
