@@ -12,6 +12,8 @@ from torchvision import datasets as tvds
 
 from sklearn import datasets as skds
 
+from PIL import Image
+
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
@@ -30,20 +32,20 @@ class CDataset(Dataset, ABC):
     
     """    
     def __init__ (self, embed=[], embed_lookup={}, transform=False, 
-                  target_transform=None, **kwargs):
+                  target_transform=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embed, self.embed_lookup = embed, embed_lookup
         self.data = self.load_data(**kwargs)
-        self.ds_idx = []
+        self.ds_idx = list(self.data.keys())
         print('CDataset created...')
     
     def __getitem__(self, i):
 
-        X = self.data[i][0].astype(np.float32)
+        X = self.data[i][0]
         if self.transform:
             X = self.transform(X)
             
-        y = self.data[i][1].astype(np.float64)
+        y = self.data[i][1]
         if self.target_transform:
             y = self.target_transform(y)
         
@@ -60,6 +62,14 @@ class CDataset(Dataset, ABC):
     @abstractmethod
     def load_data(self):
         return data
+    
+
+class LoadImage():
+    """A transformer for use with image file based datasets
+    transforms (loads) an image filename into a PIL image"""
+    def __call__(self, filename):
+        X = Image.open(filename)
+        return X
     
     
 class TVDS(CDataset):
@@ -83,8 +93,8 @@ class TVDS(CDataset):
         X = self.ds[i][0]
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
         
-        #y = self.ds[i][1]
-        y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
+        y = self.ds[i][1]
+        #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
         
         return X, y, []
     
