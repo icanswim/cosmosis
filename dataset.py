@@ -12,7 +12,8 @@ from torchvision import datasets as tvds
 
 from sklearn import datasets as skds
 
-from PIL import Image
+from PIL import ImageFile, Image
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class CDataset(Dataset, ABC):
@@ -68,9 +69,8 @@ class LoadImage():
     """A transformer for use with image file based datasets
     transforms (loads) an image filename into a PIL image"""
     def __call__(self, filename):
-        X = Image.open(filename)
-        return X
-    
+        return Image.open(filename)
+
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets

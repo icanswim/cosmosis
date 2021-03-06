@@ -156,7 +156,7 @@ class Learn():
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
                                             drop_last=drop_last)
-        
+
         def to_cuda(data):
             if len(data) == 0: return None
             else: return data.to('cuda:0', non_blocking=True)
