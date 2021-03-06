@@ -116,7 +116,7 @@ class Learn():
                                                             start.strftime("%Y%m%d_%H%M")))
             if not adapt: save(self.model.state_dict(), './models/{}.pth'.format(
                                                             start.strftime("%Y%m%d_%H%M")))
-            if self.model.embeddings:
+            if hasattr(self.model, 'embeddings'):
                 for i, embedding in enumerate(self.model.embeddings):
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(
