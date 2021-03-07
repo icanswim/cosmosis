@@ -55,7 +55,7 @@ class CDataset(Dataset, ABC):
             embed_idx.append(as_tensor(
                 np.asarray(self.embed_lookup[embed[0]][self.data[i][2][e]], 'int64')))
         
-        return as_tensor(X), as_tensor(y), embed_idx 
+        return X, y, embed_idx 
     
     def __len__(self):
         return len(self.ds_idx)
@@ -71,6 +71,10 @@ class LoadImage():
     def __call__(self, filename):
         return Image.open(filename)
 
+class AsTensor():
+    """Transforms a numpy array to a torch tensor"""
+    def __call__(self, X):
+        return as_tensor(X)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
