@@ -16,6 +16,7 @@ def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
     if model_name in ['resnet18']:
         model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
                                 kernel_size=7, stride=2, padding=3, bias=False)
+    print('TorchVision model {} loaded...'.format(model_name))
     return model
 
 class CModel(nn.Module):
@@ -24,6 +25,7 @@ class CModel(nn.Module):
     """
     def __init__(self, embed=[], **kwargs):
         super().__init__()
+        print('CModel loaded...')
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
         
@@ -100,7 +102,7 @@ class FFNet(CModel):
         self.layers = nn.ModuleList(self.layers)  
     
         self.embeddings = self.embedding_layer(embed)
-        
+        print('FFNet model loaded...')
         
 
         
