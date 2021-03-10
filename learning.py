@@ -44,7 +44,7 @@ class Learn():
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
         if load_model:
-            try: #uses the same embed params for all datasets 
+            try: #uses the same embed params for all datasets (train/val/test)
                 model = Model(embed=self.ds_params['train_params']['embed'], 
                                                               **model_params)
                 model.load_state_dict(load('./models/'+load_model))
@@ -236,7 +236,11 @@ class Learn():
         plt.show()
 
 class Selector(Sampler):
-    """splits = (train/val/test) splits the dataset_idx, does not overwrite 
+    """splits = (.8,) or (.7,.15) or None
+    
+    single ds use splits with 2 values to make train/val/test sets
+    double ds use splits with 1 value to make train/val set and second ds for test
+    triple ds use splits None 
     """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
@@ -252,16 +256,18 @@ class Selector(Sampler):
         
         if set_seed: 
             random.seed(set_seed)
-                        
-        if splits:  
-            random.shuffle(self.dataset_idx)
+            
+        random.shuffle(self.dataset_idx)                
+        if len(splits) == 1:  
+            cut1 = int(len(self.dataset_idx)*splits[0])
+            self.train_idx = self.dataset_idx[:cut1]
+            self.val_idx = self.dataset_idx[cut1:]
+        if len(splits) == 2:
             cut1 = int(len(self.dataset_idx)*splits[0])
             cut2 = int(len(self.dataset_idx)*splits[1])
             self.train_idx = self.dataset_idx[:cut1]
-            if self.val_idx == None:
-                self.val_idx = self.dataset_idx[cut1:cut1+cut2]
-            if self.test_idx == None:
-                self.test_idx = self.dataset_idx[cut1+cut2:]
+            self.val_idx = self.dataset_idx[cut1:cut1+cut2]
+            self.test_idx = self.dataset_idx[cut1+cut2:]
         
         random.seed()
         

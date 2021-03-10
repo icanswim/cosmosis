@@ -64,7 +64,6 @@ class CDataset(Dataset, ABC):
     def load_data(self):
         return data
     
-
 class LoadImage():
     """A transformer for use with image file based datasets
     transforms (loads) an image filename into a PIL image"""
@@ -73,8 +72,13 @@ class LoadImage():
 
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
-    def __call__(self, X):
-        return as_tensor(X)
+    def __call__(self, arr):
+        return as_tensor(arr)
+    
+class Transpose():
+    """Transforms a numpy array"""
+    def __call__(self, arr):
+        return np.transpose(arr)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
