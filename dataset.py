@@ -6,7 +6,7 @@ from pandas.api.types import CategoricalDtype
 import numpy as np
 
 from torch.utils.data import Dataset, IterableDataset, ConcatDataset
-from torch import as_tensor, cat
+from torch import as_tensor, cat, squeeze
 
 from torchvision import datasets as tvds
 
@@ -73,7 +73,7 @@ class LoadImage():
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __call__(self, arr):
-        return as_tensor(arr)
+        return squeeze(as_tensor(arr))
     
 class Transpose():
     """Transforms a numpy array"""

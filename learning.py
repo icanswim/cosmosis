@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from torch import no_grad, save, load, from_numpy, squeeze
 from torch.utils.data import Sampler, DataLoader
 
+from sklearn import metrics
+
 
 class Learn():
     """
@@ -31,17 +33,23 @@ class Learn():
     def __init__(self, Datasets, Model, Sampler, 
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
-                 opt_params={}, sched_params={}, crit_params={}, 
+                 opt_params={}, sched_params={}, crit_params={}, metric_params={}, 
                  adapt=False, load_model=False, load_embed=False, save_model=False,
                  batch_size=10, epochs=1):
         
-        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         start = datetime.now()
-        logging.info('New experiment...\n\n model: {}, start time: {}'.format(
-                                        Model, start.strftime('%Y%m%d_%H%M')))
+        
         self.bs = batch_size
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
+        
+        self.metrics = Metric(**metric_params)
+        self.metrics.log('\nNew experiment...\n model: {}, start time: {}'.format(
+                                                Model, start.strftime('%Y%m%d_%H%M')))
+        self.metric.log('dataset: {}\n{}'.format(Datasets, ds_params))
+        self.metric.log('sampler: {}\n{}'.format(type(Sampler), sample_params))
+        self.metric.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+                                                    epochs, batch_size, save_model, load_model))
         
         if load_model:
             try: #uses the same embed params for all datasets (train/val/test)
@@ -70,46 +78,28 @@ class Learn():
         if adapt: 
             model.adapt(adapt)
         self.model = model.to('cuda:0')
-        
-        logging.info(self.model.children)
-        logging.info('dataset: {}\n{}'.format(Datasets, self.ds_params))
-        logging.info('sampler: {}\n{}'.format(type(self.sampler), sample_params))
-        logging.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
-                                    epochs, batch_size, save_model, load_model))
+        self.metric.log(self.model.children)
         
         if Criterion:
             self.criterion = Criterion(**crit_params).to('cuda:0')
+            self.metric.log('criterion: {}\n{}'.format(type(self.criterion), crit_params))
             self.opt = Optimizer(self.model.parameters(), **opt_params)
+            self.metric.log('optimizer: {}\n{}'.format(type(self.opt), opt_params))
             self.scheduler = Scheduler(self.opt, **sched_params)
-            logging.info('criterion: {}\n{}'.format(type(self.criterion), crit_params))
-            logging.info('optimizer: {}\n{}'.format(type(self.opt), opt_params))
-
-            self.train_log, self.val_log, self.lr_log = [], [], []
+            self.metric.log('scheduler: {}\n{}'.format(type(self.scheduler)))
+            
             for e in range(epochs):
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
-                    self.run('val')
-                if epochs > 10:
-                    if e % int(epochs/10) == 0:
-                        print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
-                                format(e, epochs, self.train_log[-1], self.val_log[-1], 
-                                                       self.opt.param_groups[0]['lr']))
-                else:
-                    print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
-                            format(e, epochs, self.train_log[-1], self.val_log[-1], 
-                                                   self.opt.param_groups[0]['lr']))
+                    self.run('val')  
+                
             with no_grad():
                 self.run('test')
                 
-            pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log)).to_csv(
-                                            './logs/'+start.strftime("%Y%m%d_%H%M"))
-            self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
         else: # no Criterion implies inference mode
             with no_grad():
                 self.run('infer')
-        
-        elapsed = datetime.now() - start
         
         if save_model:
             if adapt: save(self.model, './models/{}.pth'.format(
@@ -122,11 +112,12 @@ class Learn():
                     np.save('./models/{}_{}_embedding_weight.npy'.format(
                                              start.strftime("%Y%m%d_%H%M"), i), weight)
                     
-        logging.info('learning time: {} \n'.format(elapsed))
-        print('learning time: {}'.format(elapsed))
+        elapsed = datetime.now() - start            
+        self.metrics.log('learning time: {} \n'.format(elapsed))
+        self.metrics.report(e)
         
     def run(self, flag): 
-        e_loss, i, predictions = 0, 0, []
+        e_loss, i = 0, 0
         
         if flag == 'train': 
             self.model.training = True
@@ -169,11 +160,9 @@ class Learn():
                 y_pred = self.model(X, embed)
             else:
                 y_pred = self.model(X)
-            
+                
             if flag == 'infer':
-                y = np.reshape(y, (-1, 1)) # y = 'id'
-                y_pred = np.reshape(y_pred.data.to('cpu').numpy(), (-1, 1))
-                predictions.append(np.concatenate((y, y_pred), axis=1)) 
+                self.metrics.infer(y, y_pred)
             else:
                 y = to_cuda(y)
                 self.opt.zero_grad()
@@ -183,28 +172,11 @@ class Learn():
                     b_loss.backward()
                     self.opt.step()
 
-        if flag == 'train': 
-            self.train_log.append(e_loss/i)
-            self.lr_log.append(self.opt.param_groups[0]['lr'])
+        self.metrics.loss(flag, e_loss/i)
+        self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
         if flag == 'val': 
-            self.val_log.append(e_loss/i)
-            self.scheduler.step(e_loss)
-        if flag == 'test':  
-            logging.info('test loss: {}'.format(e_loss/i))
-            print('test loss: {}'.format(e_loss/i))
-            print('y_pred:\n{}\n y:\n{}'.format(y_pred[:10].data, y[:10].data))
-        if flag == 'infer': 
-            # TODO abstraction
-            logging.info('inference complete')
-            predictions = np.concatenate(predictions, axis=0)
-            predictions = np.reshape(predictions, (-1, 2))
-            self.predictions = pd.DataFrame(predictions, columns=['id','scalar_coupling_constant'])
-            self.predictions['id'] = self.predictions['id'].astype('int64')
-            print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
-            self.predictions.to_csv('quantum_inference.csv', 
-                                    header=['id','scalar_coupling_constant'], 
-                                    index=False)
-            print('inference complete and saved to csv...')
+            self.scheduler.step(e_loss/i)
+            
     
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
@@ -229,11 +201,6 @@ class Learn():
                                    test_idx=self.test_ds.ds_idx,
                                    **sample_params)
 
-    @classmethod    
-    def view_log(cls, log_file):
-        log = pd.read_csv(log_file)
-        log.iloc[:,1:4].plot(logy=True)
-        plt.show()
 
 class Selector(Sampler):
     """splits = (.8,) or (.7,.15) or None
@@ -301,3 +268,64 @@ class Selector(Sampler):
         random.shuffle(self.val_idx)
         random.shuffle(self.train_idx)
         random.seed()
+        
+        
+class Metrics():
+    
+    def __init__(self, **sk_params):
+        
+        self.e_loss, self.predictions = [], []
+        self.train_loss, self.val_loss, self.lr_log = [], [], []
+        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
+        
+        
+    def infer(self, y, y_pred):
+
+        self.predictions.append(np.concatenate((y, y_pred), axis=1))
+
+        predictions = np.concatenate(predictions, axis=0)
+        predictions = np.reshape(predictions, (-1, 2))
+        self.predictions = pd.DataFrame(predictions, columns=['id','predictions'])
+        self.predictions['id'] = self.predictions['id'].astype('int64')
+        print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
+        self.predictions.to_csv('cosmosis_inference.csv', 
+                                header=['id','predictions'], 
+                                index=False)
+        print('inference complete and saved to csv...')
+
+    def sk_metric(self, metric=''):
+        self.sk_metric = getattr(metrics, metric)
+        
+    def loss(self, flag, loss):
+        
+        if flag == 'train':
+            self.train_loss.append(loss)
+        if flag == 'val':
+            self.val_loss.append(loss)
+        if self.flag == 'test': 
+            
+        if epochs > 10:
+        if e % int(epochs/10) == 0:
+            print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
+                    format(e, epochs, self.train_log[-1], self.val_log[-1], 
+                                           self.opt.param_groups[0]['lr']))
+        else:
+            print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
+                format(e, epochs, self.train_log[-1], self.val_log[-1], 
+                                       self.opt.param_groups[0]['lr']))
+            
+    def log(self, message):
+        logging.info(message)
+        
+    def report(self):
+        pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log)).to_csv(
+                                            './logs/'+start.strftime("%Y%m%d_%H%M"))
+        self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
+        
+        print('learning time: {}'.format(elapsed))
+        
+    @classmethod    
+    def view_log(cls, log_file):
+        log = pd.read_csv(log_file)
+        log.iloc[:,1:4].plot(logy=True)
+        plt.show()
