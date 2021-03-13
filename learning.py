@@ -37,8 +37,6 @@ class Learn():
                  adapt=False, load_model=False, load_embed=False, save_model=False,
                  batch_size=10, epochs=1):
         
-        start = datetime.now()
-        
         self.bs = batch_size
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
@@ -111,10 +109,7 @@ class Learn():
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(
                                              start.strftime("%Y%m%d_%H%M"), i), weight)
-                    
-        elapsed = datetime.now() - start            
-        self.metrics.log('learning time: {} \n'.format(elapsed))
-        self.metrics.report(e)
+        self.metrics.report()
         
     def run(self, flag): 
         e_loss, i = 0, 0
@@ -177,6 +172,11 @@ class Learn():
         if flag == 'val': 
             self.scheduler.step(e_loss/i)
             
+    @classmethod    
+    def view_log(cls, log_file):
+        log = pd.read_csv(log_file)
+        log.iloc[:,1:4].plot(logy=True)
+        plt.show()    
     
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
@@ -274,18 +274,17 @@ class Metrics():
     
     def __init__(self, **sk_params):
         
+        self.start = datetime.now()
         self.e_loss, self.predictions = [], []
         self.train_loss, self.val_loss, self.lr_log = [], [], []
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         
-        
     def infer(self, y, y_pred):
 
         self.predictions.append(np.concatenate((y, y_pred), axis=1))
-
-        predictions = np.concatenate(predictions, axis=0)
-        predictions = np.reshape(predictions, (-1, 2))
-        self.predictions = pd.DataFrame(predictions, columns=['id','predictions'])
+        self.predictions = np.concatenate(self.predictions, axis=0)
+        self.predictions = np.reshape(self.predictions, (-1, 2))
+        self.predictions = pd.DataFrame(self.predictions, columns=['id','predictions'])
         self.predictions['id'] = self.predictions['id'].astype('int64')
         print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
         self.predictions.to_csv('cosmosis_inference.csv', 
@@ -316,16 +315,11 @@ class Metrics():
             
     def log(self, message):
         logging.info(message)
-        
+    
     def report(self):
+        elapsed = datetime.now() - self.start            
+        self.log('learning time: {} \n'.format(elapsed))
         pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log)).to_csv(
-                                            './logs/'+start.strftime("%Y%m%d_%H%M"))
+                                        './logs/'+start.strftime("%Y%m%d_%H%M"))
         self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
-        
         print('learning time: {}'.format(elapsed))
-        
-    @classmethod    
-    def view_log(cls, log_file):
-        log = pd.read_csv(log_file)
-        log.iloc[:,1:4].plot(logy=True)
-        plt.show()
