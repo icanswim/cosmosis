@@ -30,10 +30,10 @@ class Learn():
           
     load_model = False/'saved_model.pth'/'saved_model.pk'
     """
-    def __init__(self, Datasets, Model, Sampler, 
+    def __init__(self, Datasets, Model, Sampler, Metrics=Metrics,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
-                 opt_params={}, sched_params={}, crit_params={}, metric_params={}, 
+                 opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
                  adapt=False, load_model=False, load_embed=False, save_model=False,
                  batch_size=10, epochs=1):
         
@@ -41,7 +41,7 @@ class Learn():
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
-        self.metrics = Metric(**metric_params)
+        self.metrics = Metrics(**metric_params)
         self.metrics.log('\nNew experiment...\n model: {}, start time: {}'.format(
                                                 Model, start.strftime('%Y%m%d_%H%M')))
         self.metric.log('dataset: {}\n{}'.format(Datasets, ds_params))
@@ -87,6 +87,7 @@ class Learn():
             self.metric.log('scheduler: {}\n{}'.format(type(self.scheduler)))
             
             for e in range(epochs):
+                self.metric(e)
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
@@ -112,7 +113,7 @@ class Learn():
         self.metrics.report()
         
     def run(self, flag): 
-        e_loss, i = 0, 0
+        e_loss, e_sk, i = 0, 0, 0
         
         if flag == 'train': 
             self.model.training = True
@@ -157,27 +158,28 @@ class Learn():
                 y_pred = self.model(X)
                 
             if flag == 'infer':
-                self.metrics.infer(y, y_pred)
+                self.metrics.predictions.append(np.concatenate((y_pred, y), axis=1))
             else:
                 y = to_cuda(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
+                self.metrics.sk_data.append(np.concatenate((y_pred, y), axis=1))
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
-
-        self.metrics.loss(flag, e_loss/i)
-        self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
+                    
+        if flag == 'infer':
+            self.metrics.infer()
+        else:
+            self.metrics.loss(flag, e_loss/i)
+            self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
+            self.metrics.sk_metric()
+            self.metrics.status_report()
+            
         if flag == 'val': 
             self.scheduler.step(e_loss/i)
-            
-    @classmethod    
-    def view_log(cls, log_file):
-        log = pd.read_csv(log_file)
-        log.iloc[:,1:4].plot(logy=True)
-        plt.show()    
-    
+   
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
         if len(Datasets) == 1:
@@ -272,16 +274,24 @@ class Selector(Sampler):
         
 class Metrics():
     
-    def __init__(self, **sk_params):
+    def __init__(self, report_interval=60, sk_metric_name=None, sk_params={}):
         
         self.start = datetime.now()
-        self.e_loss, self.predictions = [], []
-        self.train_loss, self.val_loss, self.lr_log = [], [], []
-        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
-        
-    def infer(self, y, y_pred):
+        self.report_time = self.start
+        self.report_interval = report_interval
 
-        self.predictions.append(np.concatenate((y, y_pred), axis=1))
+        self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
+        self.sk_data, self.sk_log = [], []
+        
+        self.epoch, self.e_loss, self.predictions = 0, [], []
+        self.train_loss, self.val_loss, self.lr_log = [], [], []
+        
+        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
+    
+    def __call__(self, epoch):
+        self.epoch = epoch
+    
+    def infer(self):
         self.predictions = np.concatenate(self.predictions, axis=0)
         self.predictions = np.reshape(self.predictions, (-1, 2))
         self.predictions = pd.DataFrame(self.predictions, columns=['id','predictions'])
@@ -292,34 +302,43 @@ class Metrics():
                                 index=False)
         print('inference complete and saved to csv...')
 
-    def sk_metric(self, metric=''):
-        self.sk_metric = getattr(metrics, metric)
+    def sk_metric(self):
+        if self.sk_metric_name is not None:
+            self.sk_metric = getattr(metrics, self.sk_metric_name)
+            self.sk_log.append(self.sk_metric(self.sk_data[0], self.sk_data[1], **self.sk_params))
+            self.sk_data = []
         
     def loss(self, flag, loss):
-        
         if flag == 'train':
             self.train_loss.append(loss)
         if flag == 'val':
             self.val_loss.append(loss)
-        if self.flag == 'test': 
-            
-        if epochs > 10:
-        if e % int(epochs/10) == 0:
-            print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
-                    format(e, epochs, self.train_log[-1], self.val_log[-1], 
-                                           self.opt.param_groups[0]['lr']))
-        else:
-            print('epoch: {} of {}, train loss: {}, val loss: {}, lr: {}'.\
-                format(e, epochs, self.train_log[-1], self.val_log[-1], 
-                                       self.opt.param_groups[0]['lr']))
-            
+        if self.flag == 'test':
+            self.log('test loss: {}'.format(loss))
+            print('test loss: {}'.format(loss))
+          
     def log(self, message):
         logging.info(message)
-    
+        
+    def status_report(self):
+        elapsed = datetime.now() - self.report_time
+        if elapsed.total_seconds() > self.report_interval:
+            print('epoch: {}, lr: {}'.format(self.epoch, self.opt.param_groups[0]['lr']
+            print('train loss: {}, val loss: {}'.format(self.train_log[-1], self.val_log[-1]))
+            print('sk_metric: {}'.format(self.sk_metric))
+            self.report_time = datetime.now()
+        
     def report(self):
         elapsed = datetime.now() - self.start            
         self.log('learning time: {} \n'.format(elapsed))
-        pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log)).to_csv(
-                                        './logs/'+start.strftime("%Y%m%d_%H%M"))
-        self.view_log('./logs/'+start.strftime('%Y%m%d_%H%M'))
+        self.log('sklearn metric: {} \n'.format(self.sk_metric))
+        pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log, self.sk_log)).to_csv(
+                                    './logs/'+self.start.strftime("%Y%m%d_%H%M"))
+        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'))
         print('learning time: {}'.format(elapsed))
+
+    @classmethod    
+    def view_log(cls, log_file):
+        log = pd.read_csv(log_file)
+        log.iloc[:,1:5].plot(logy=True)
+        plt.show() 
