@@ -73,12 +73,25 @@ class LoadImage():
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __call__(self, arr):
-        return squeeze(as_tensor(arr))
+        return as_tensor(arr)
     
 class Transpose():
     """Transforms a numpy array"""
     def __call__(self, arr):
         return np.transpose(arr)
+
+class Squeeze():
+    """Transforms a torch array"""
+    def __call__(self, arr):
+        return squeeze(arr)
+    
+class DType():
+    """Transforms a numpy array"""
+    def __init__(self, dtype):
+        self.dtype = dtype
+        
+    def __call__(self, arr):
+        return arr.astype(self.dtype)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
@@ -147,7 +160,7 @@ class SKDS(CDataset):
             embed_idx.append(as_tensor(
                 self.embed_lookup[self.data[2][i]]).astype(np.int64))
         
-        return as_tensor(X), as_tensor(y), embed_idx
+        return X, y, embed_idx
     
     def __len__(self):
         return self.data[0].shape[0]

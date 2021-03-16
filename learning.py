@@ -15,6 +15,155 @@ from torch.utils.data import Sampler, DataLoader
 from sklearn import metrics
 
 
+class Metrics():
+    
+    def __init__(self, report_interval=10, sk_metric_name=None, sk_params={}):
+        
+        self.start = datetime.now()
+        self.report_time = self.start
+        self.report_interval = report_interval
+        
+        self.epoch, self.e_loss, self.predictions = 0, [], []
+        self.train_loss, self.val_loss, self.lr_log = [], [], []
+        
+        self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
+        self.skm, self.sk_data, self.sk_log = None, [], []
+        if self.sk_metric_name is not None:
+            self.skm = getattr(metrics, self.sk_metric_name)
+            
+        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
+        self.log('\nNew Experiment: {}'.format(self.start))
+    
+    def __call__(self, epoch):
+        self.epoch = epoch
+    
+    def infer(self):
+        self.predictions = np.concatenate(self.predictions, axis=0)
+        self.predictions = np.reshape(self.predictions, (-1, 2))
+        self.predictions = pd.DataFrame(self.predictions, columns=['id','predictions'])
+        self.predictions['id'] = self.predictions['id'].astype('int64')
+        print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
+        self.predictions.to_csv('cosmosis_inference.csv', 
+                                header=['id','predictions'], 
+                                index=False)
+        print('inference complete and saved to csv...')
+
+    def sk_metric(self):
+        
+        if self.skm is not None:
+            self.sk_log.append(self.skm(
+                self.sk_data[0][:,0], self.sk_data[0][:,1], **self.sk_params))
+            self.sk_data = []
+        else: 
+            self.sk_log.append(0)
+        
+    def loss(self, flag, loss):
+        if flag == 'train':
+            self.train_loss.append(loss)
+        if flag == 'val':
+            self.val_loss.append(loss)
+        if flag == 'test':
+            self.log('test loss: {}'.format(loss))
+            print('test loss: {}'.format(loss))
+          
+    def log(self, message):
+        logging.info(message)
+        
+    def status_report(self):
+        elapsed = datetime.now() - self.report_time
+        if elapsed.total_seconds() > self.report_interval or self.epoch % 10 == 0:
+            print('learning time: {}'.format(datetime.now()-self.start))
+            print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
+            print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
+            print('sk_metric: \n{}'.format(self.sk_log[-1]))
+            self.report_time = datetime.now()
+        
+    def report(self):
+        elapsed = datetime.now() - self.start            
+        self.log('learning time: {} \n'.format(elapsed))
+        print('learning time: {}'.format(elapsed))
+        self.log('sklearn metric: \n{} \n'.format(self.sk_log[-1]))
+        print('sklean metric: \n{} \n'.format(self.sk_log[-1]))
+        pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_log),
+                     columns=['train_loss','val_loss','lr','sk_metric']).to_csv(
+                                            './logs/'+self.start.strftime("%Y%m%d_%H%M"))
+        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'))
+        
+    @classmethod    
+    def view_log(cls, log_file):
+        log = pd.read_csv(log_file)
+        log.iloc[:,1:5].plot(logy=True)
+        plt.show() 
+
+
+class Selector(Sampler):
+    """splits = (.8,) or (.7,.15) or None
+    
+    single ds use splits with 2 values to make train/val/test sets
+    double ds use splits with 1 value to make train/val set and second ds for test
+    triple ds use splits None 
+    """
+   
+    def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
+                 splits=(.7,.15), set_seed=False):
+        self.set_seed = set_seed
+        
+        if dataset_idx == None:  
+            self.dataset_idx = train_idx
+        else:
+            self.dataset_idx = dataset_idx
+            
+        self.train_idx, self.val_idx, self.test_idx = train_idx, val_idx, test_idx
+        
+        if set_seed: 
+            random.seed(set_seed)
+            
+        random.shuffle(self.dataset_idx)                
+        if len(splits) == 1:  
+            cut1 = int(len(self.dataset_idx)*splits[0])
+            self.train_idx = self.dataset_idx[:cut1]
+            self.val_idx = self.dataset_idx[cut1:]
+        if len(splits) == 2:
+            cut1 = int(len(self.dataset_idx)*splits[0])
+            cut2 = int(len(self.dataset_idx)*splits[1])
+            self.train_idx = self.dataset_idx[:cut1]
+            self.val_idx = self.dataset_idx[cut1:cut1+cut2]
+            self.test_idx = self.dataset_idx[cut1+cut2:]
+        
+        random.seed()
+        
+    def __iter__(self):
+        if self.flag == 'train':
+            return iter(self.train_idx)
+        if self.flag == 'val':
+            return iter(self.val_idx)
+        if self.flag == 'test':
+            return iter(self.test_idx)
+        if self.flag == 'infer':
+            return iter(self.dataset_idx)
+
+    def __len__(self):
+        if self.flag == 'train':
+            return len(self.train_idx)
+        if self.flag == 'val':
+            return len(self.val_idx)
+        if self.flag == 'test':
+            return len(self.test_idx) 
+        if self.flag == 'infer':
+            return len(self.dataset_idx)
+        
+    def __call__(self, flag):
+        self.flag = flag
+        return self
+    
+    def shuffle_train_val_idx(self):
+        if self.set_seed:
+            random.seed(self.set_seed)
+        random.shuffle(self.val_idx)
+        random.shuffle(self.train_idx)
+        random.seed()
+        
+        
 class Learn():
     """
     Datasets = [TrainDS, ValDS, TestDS]
@@ -30,7 +179,7 @@ class Learn():
           
     load_model = False/'saved_model.pth'/'saved_model.pk'
     """
-    def __init__(self, Datasets, Model, Sampler, Metrics=Metrics,
+    def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
@@ -41,12 +190,11 @@ class Learn():
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
-        self.metrics = Metrics(**metric_params)
-        self.metrics.log('\nNew experiment...\n model: {}, start time: {}'.format(
-                                                Model, start.strftime('%Y%m%d_%H%M')))
-        self.metric.log('dataset: {}\n{}'.format(Datasets, ds_params))
-        self.metric.log('sampler: {}\n{}'.format(type(Sampler), sample_params))
-        self.metric.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+        self.metrics = Metrics(**metrics_params)
+        self.metrics.log('model: {}\n{}'.format(Model, model_params))
+        self.metrics.log('dataset: {}\n{}'.format(Datasets, ds_params))
+        self.metrics.log('sampler: {}\n{}'.format(Sampler, sample_params))
+        self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                     epochs, batch_size, save_model, load_model))
         
         if load_model:
@@ -76,18 +224,18 @@ class Learn():
         if adapt: 
             model.adapt(adapt)
         self.model = model.to('cuda:0')
-        self.metric.log(self.model.children)
+        self.metrics.log(self.model.children)
         
         if Criterion:
             self.criterion = Criterion(**crit_params).to('cuda:0')
-            self.metric.log('criterion: {}\n{}'.format(type(self.criterion), crit_params))
+            self.metrics.log('criterion: {}\n{}'.format(self.criterion, crit_params))
             self.opt = Optimizer(self.model.parameters(), **opt_params)
-            self.metric.log('optimizer: {}\n{}'.format(type(self.opt), opt_params))
+            self.metrics.log('optimizer: {}\n{}'.format(self.opt, opt_params))
             self.scheduler = Scheduler(self.opt, **sched_params)
-            self.metric.log('scheduler: {}\n{}'.format(type(self.scheduler)))
+            self.metrics.log('scheduler: {}\n{}'.format(self.scheduler, sched_params))
             
             for e in range(epochs):
-                self.metric(e)
+                self.metrics(e)
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
@@ -164,7 +312,11 @@ class Learn():
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
-                self.metrics.sk_data.append(np.concatenate((y_pred, y), axis=1))
+                if self.metrics.skm is not None:
+                    y_pred, y = y_pred.detach().cpu().numpy(), y.detach().cpu().numpy()
+                    y_pred = np.reshape(np.argmax(y_pred, axis=1), (-1, 1))
+                    y = np.reshape(y, (-1, 1))
+                    self.metrics.sk_data.append(np.concatenate((y_pred, y), axis=1))
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
@@ -174,12 +326,13 @@ class Learn():
         else:
             self.metrics.loss(flag, e_loss/i)
             self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
+            
+        if flag in ['val','test']: 
+            self.scheduler.step(e_loss/i)
+            self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
             self.metrics.sk_metric()
             self.metrics.status_report()
             
-        if flag == 'val': 
-            self.scheduler.step(e_loss/i)
-   
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
         if len(Datasets) == 1:
@@ -204,141 +357,5 @@ class Learn():
                                    **sample_params)
 
 
-class Selector(Sampler):
-    """splits = (.8,) or (.7,.15) or None
-    
-    single ds use splits with 2 values to make train/val/test sets
-    double ds use splits with 1 value to make train/val set and second ds for test
-    triple ds use splits None 
-    """
-   
-    def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
-                 splits=(.7,.15), set_seed=False):
-        self.set_seed = set_seed
-        
-        if dataset_idx == None:  
-            self.dataset_idx = train_idx
-        else:
-            self.dataset_idx = dataset_idx
-            
-        self.train_idx, self.val_idx, self.test_idx = train_idx, val_idx, test_idx
-        
-        if set_seed: 
-            random.seed(set_seed)
-            
-        random.shuffle(self.dataset_idx)                
-        if len(splits) == 1:  
-            cut1 = int(len(self.dataset_idx)*splits[0])
-            self.train_idx = self.dataset_idx[:cut1]
-            self.val_idx = self.dataset_idx[cut1:]
-        if len(splits) == 2:
-            cut1 = int(len(self.dataset_idx)*splits[0])
-            cut2 = int(len(self.dataset_idx)*splits[1])
-            self.train_idx = self.dataset_idx[:cut1]
-            self.val_idx = self.dataset_idx[cut1:cut1+cut2]
-            self.test_idx = self.dataset_idx[cut1+cut2:]
-        
-        random.seed()
-        
-    def __iter__(self):
-        if self.flag == 'train':
-            return iter(self.train_idx)
-        if self.flag == 'val':
-            return iter(self.val_idx)
-        if self.flag == 'test':
-            return iter(self.test_idx)
-        if self.flag == 'infer':
-            return iter(self.dataset_idx)
-
-    def __len__(self):
-        if self.flag == 'train':
-            return len(self.train_idx)
-        if self.flag == 'val':
-            return len(self.val_idx)
-        if self.flag == 'test':
-            return len(self.test_idx) 
-        if self.flag == 'infer':
-            return len(self.dataset_idx)
-        
-    def __call__(self, flag):
-        self.flag = flag
-        return self
-    
-    def shuffle_train_val_idx(self):
-        if self.set_seed:
-            random.seed(self.set_seed)
-        random.shuffle(self.val_idx)
-        random.shuffle(self.train_idx)
-        random.seed()
         
         
-class Metrics():
-    
-    def __init__(self, report_interval=60, sk_metric_name=None, sk_params={}):
-        
-        self.start = datetime.now()
-        self.report_time = self.start
-        self.report_interval = report_interval
-
-        self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
-        self.sk_data, self.sk_log = [], []
-        
-        self.epoch, self.e_loss, self.predictions = 0, [], []
-        self.train_loss, self.val_loss, self.lr_log = [], [], []
-        
-        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
-    
-    def __call__(self, epoch):
-        self.epoch = epoch
-    
-    def infer(self):
-        self.predictions = np.concatenate(self.predictions, axis=0)
-        self.predictions = np.reshape(self.predictions, (-1, 2))
-        self.predictions = pd.DataFrame(self.predictions, columns=['id','predictions'])
-        self.predictions['id'] = self.predictions['id'].astype('int64')
-        print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
-        self.predictions.to_csv('cosmosis_inference.csv', 
-                                header=['id','predictions'], 
-                                index=False)
-        print('inference complete and saved to csv...')
-
-    def sk_metric(self):
-        if self.sk_metric_name is not None:
-            self.sk_metric = getattr(metrics, self.sk_metric_name)
-            self.sk_log.append(self.sk_metric(self.sk_data[0], self.sk_data[1], **self.sk_params))
-            self.sk_data = []
-        
-    def loss(self, flag, loss):
-        if flag == 'train':
-            self.train_loss.append(loss)
-        if flag == 'val':
-            self.val_loss.append(loss)
-        if self.flag == 'test':
-            self.log('test loss: {}'.format(loss))
-            print('test loss: {}'.format(loss))
-          
-    def log(self, message):
-        logging.info(message)
-        
-    def status_report(self):
-        elapsed = datetime.now() - self.report_time
-        if elapsed.total_seconds() > self.report_interval:
-            print('epoch: {}, lr: {}'.format(self.epoch, self.opt.param_groups[0]['lr']
-            print('train loss: {}, val loss: {}'.format(self.train_log[-1], self.val_log[-1]))
-            print('sk_metric: {}'.format(self.sk_metric))
-            self.report_time = datetime.now()
-        
-    def report(self):
-        elapsed = datetime.now() - self.start            
-        self.log('learning time: {} \n'.format(elapsed))
-        self.log('sklearn metric: {} \n'.format(self.sk_metric))
-        pd.DataFrame(zip(self.train_log, self.val_log, self.lr_log, self.sk_log)).to_csv(
-                                    './logs/'+self.start.strftime("%Y%m%d_%H%M"))
-        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'))
-        print('learning time: {}'.format(elapsed))
-
-    @classmethod    
-    def view_log(cls, log_file):
-        log = pd.read_csv(log_file)
-        log.iloc[:,1:5].plot(logy=True)
-        plt.show() 
