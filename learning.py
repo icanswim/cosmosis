@@ -271,27 +271,23 @@ class Learn():
         if flag == 'train': 
             self.model.training = True
             dataset = self.train_ds
-            sampler = self.sampler(flag=flag)
             drop_last = True
             
         if flag == 'val':
             self.model.training = False
             dataset = self.val_ds
-            sampler = self.sampler(flag=flag)
             drop_last = True
 
         if flag == 'test':
             self.model.training = False
             dataset = self.test_ds
-            sampler = self.sampler(flag=flag)
-            drop_last = False
+            drop_last = True
             
         if flag == 'infer':
             self.model.training = False
             dataset = self.test_ds
-            sampler = self.sampler(flag=flag)
             drop_last = False
-            
+               
         dataloader = DataLoader(dataset, batch_size=self.bs, 
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
