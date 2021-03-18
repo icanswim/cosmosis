@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 from torch import no_grad, save, load, from_numpy, squeeze
 from torch.utils.data import Sampler, DataLoader
+from torch.nn.functional import softmax
 
 from sklearn import metrics
 
@@ -27,7 +28,7 @@ class Metrics():
         self.train_loss, self.val_loss, self.lr_log = [], [], []
         
         self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
-        self.skm, self.sk_data, self.sk_log = None, [], []
+        self.skm, self.sk_y, self.sk_pred, self.sk_log = None, [], [], []
         if self.sk_metric_name is not None:
             self.skm = getattr(metrics, self.sk_metric_name)
             
@@ -49,11 +50,15 @@ class Metrics():
         print('inference complete and saved to csv...')
 
     def sk_metric(self):
-        
         if self.skm is not None:
-            self.sk_log.append(self.skm(
-                self.sk_data[0][:,0], self.sk_data[0][:,1], **self.sk_params))
-            self.sk_data = []
+            def softmax(x):
+                return np.exp(x)/sum(np.exp(x))
+            y = np.reshape(np.vstack(np.asarray(self.sk_y)), -1)
+            y_pred = np.vstack(np.asarray(self.sk_pred))
+            if self.sk_metric_name == 'roc_auc_score':
+                y_pred = np.apply_along_axis(softmax, 1, y_pred)
+            self.sk_log.append(self.skm(y, y_pred, **self.sk_params))
+            self.sk_y, self.sk_pred = [], []
         else: 
             self.sk_log.append(0)
         
@@ -313,10 +318,8 @@ class Learn():
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:
-                    y_pred, y = y_pred.detach().cpu().numpy(), y.detach().cpu().numpy()
-                    y_pred = np.reshape(np.argmax(y_pred, axis=1), (-1, 1))
-                    y = np.reshape(y, (-1, 1))
-                    self.metrics.sk_data.append(np.concatenate((y_pred, y), axis=1))
+                    self.metrics.sk_y.append(y.detach().cpu().numpy())
+                    self.metrics.sk_pred.append(y_pred.detach().cpu().numpy())
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
@@ -325,13 +328,13 @@ class Learn():
             self.metrics.infer()
         else:
             self.metrics.loss(flag, e_loss/i)
-            self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
+            self.metrics.sk_metric()
             
-        if flag in ['val','test']: 
+        if flag == 'val': 
             self.scheduler.step(e_loss/i)
             self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
-            self.metrics.sk_metric()
             self.metrics.status_report()
+        
             
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
