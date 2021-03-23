@@ -28,15 +28,13 @@ class Metrics():
         self.train_loss, self.val_loss, self.lr_log = [], [], []
         
         self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
-        self.skm, self.sk_y, self.sk_pred, self.sk_log = None, [], [], []
+        self.skm, self.sk_train_log, self.sk_val_log = None, [], []
+        self.sk_y, self.sk_pred = [], []
         if self.sk_metric_name is not None:
             self.skm = getattr(metrics, self.sk_metric_name)
             
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         self.log('\nNew Experiment: {}'.format(self.start))
-    
-    def __call__(self, epoch):
-        self.epoch = epoch
     
     def infer(self):
         self.predictions = np.concatenate(self.predictions, axis=0)
@@ -49,18 +47,27 @@ class Metrics():
                                 index=False)
         print('inference complete and saved to csv...')
 
-    def sk_metric(self):
+    def sk_metric(self, flag):
         if self.skm is not None:
             def softmax(x):
                 return np.exp(x)/sum(np.exp(x))
-            y = np.reshape(np.vstack(np.asarray(self.sk_y)), -1)
-            y_pred = np.vstack(np.asarray(self.sk_pred))
+            y = np.reshape(np.vstack(np.asarray(self.sk_y, 'float64')), -1)
+            y_pred = np.vstack(np.asarray(self.sk_pred, 'float64'))
+            
             if self.sk_metric_name == 'roc_auc_score':
                 y_pred = np.apply_along_axis(softmax, 1, y_pred)
-            self.sk_log.append(self.skm(y, y_pred, **self.sk_params))
+                
+            score = self.skm(y, y_pred, **self.sk_params)
+            
+            if flag == 'train':
+                self.sk_train_log.append(score)
+            else:
+                self.sk_val_log.append(score)
+
             self.sk_y, self.sk_pred = [], []
         else: 
-            self.sk_log.append(0)
+            self.sk_train_log.append(0)
+            self.sk_val_log.append(0)
         
     def loss(self, flag, loss):
         if flag == 'train':
@@ -80,16 +87,16 @@ class Metrics():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('sk_metric: \n{}'.format(self.sk_log[-1]))
+            print('sk_train_log: {}, sk_val_log: {}'.format(self.sk_train_log[-1], self.sk_val_log[-1]))
             self.report_time = datetime.now()
         
     def report(self):
         elapsed = datetime.now() - self.start            
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
-        self.log('sklearn metric: \n{} \n'.format(self.sk_log[-1]))
-        print('sklean metric: \n{} \n'.format(self.sk_log[-1]))
-        pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_log),
+        self.log('test set sklean metric: \n{} \n'.format(self.sk_val_log[-1]))
+        print('test sklean metric: \n{} \n'.format(self.sk_val_log[-1]))
+        pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log),
                      columns=['train_loss','val_loss','lr','sk_metric']).to_csv(
                                             './logs/'+self.start.strftime("%Y%m%d_%H%M"))
         self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'))
@@ -240,7 +247,7 @@ class Learn():
             self.metrics.log('scheduler: {}\n{}'.format(self.scheduler, sched_params))
             
             for e in range(epochs):
-                self.metrics(e)
+                self.metrics.epoch = e
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
@@ -255,14 +262,14 @@ class Learn():
         
         if save_model:
             if adapt: save(self.model, './models/{}.pth'.format(
-                                                            start.strftime("%Y%m%d_%H%M")))
+                            self.metrics.start.strftime("%Y%m%d_%H%M")))
             if not adapt: save(self.model.state_dict(), './models/{}.pth'.format(
-                                                            start.strftime("%Y%m%d_%H%M")))
+                                         self.metrics.start.strftime("%Y%m%d_%H%M")))
             if hasattr(self.model, 'embeddings'):
                 for i, embedding in enumerate(self.model.embeddings):
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(
-                                             start.strftime("%Y%m%d_%H%M"), i), weight)
+                        self.metrics.start.strftime("%Y%m%d_%H%M"), i), weight)
         self.metrics.report()
         
     def run(self, flag): 
@@ -324,7 +331,7 @@ class Learn():
             self.metrics.infer()
         else:
             self.metrics.loss(flag, e_loss/i)
-            self.metrics.sk_metric()
+            self.metrics.sk_metric(flag)
             
         if flag == 'val': 
             self.scheduler.step(e_loss/i)

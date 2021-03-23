@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 import os, re, random, h5py, pickle
 
+from operator import add
+
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 import numpy as np
@@ -12,7 +14,7 @@ from torchvision import datasets as tvds
 
 from sklearn import datasets as skds
 
-from PIL import ImageFile, Image
+from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
@@ -64,6 +66,26 @@ class CDataset(Dataset, ABC):
     def load_data(self):
         return data
     
+class ImageStats(ImageStat.Stat):
+    """A class for calculating a PIL image mean and std dev"""
+    def __add__(self, other):
+        return (ImageStats(list(map(add, self.h, other.h))))
+    
+class ImageDatasetStats():
+    """A class for calculating an image datasets mean and std dev"""
+    def __init__(self):
+        self.stats = None
+        self.i = 1
+    
+    def __call__(self, image):
+        if self.stats is None:
+            self.stats = ImageStats(image[j])
+        else:
+            self.stats += ImageStats(image[j])
+            self.i += 1
+            if self.i % 1000 == 0:
+                print('image {} processed...'.format(self.i))
+        
 class LoadImage():
     """A transformer for use with image file based datasets
     transforms (loads) an image filename into a PIL image"""
@@ -87,11 +109,11 @@ class Squeeze():
     
 class DType():
     """Transforms a numpy array"""
-    def __init__(self, dtype):
-        self.dtype = dtype
+    def __init__(self, datatype):
+        self.datatype = datatype
         
     def __call__(self, arr):
-        return arr.astype(self.dtype)
+        return arr.astype(self.datatype)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
