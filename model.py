@@ -13,7 +13,7 @@ def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
     launcher = getattr(torchvisionmodels, model_name)
     model = launcher(**tv_params)
     
-    if model_name in ['resnet18','resnet34','resnet50','wide_resnet50_2']:
+    if model_name in ['resnet18','resnet34','resnet50','wide_resnet50_2','resnext50_32x4d']:
         model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
                                 kernel_size=7, stride=2, padding=3, bias=False)
     print('TorchVision model {} loaded...'.format(model_name))
@@ -58,9 +58,10 @@ class CModel(nn.Module):
                 X = cat([X, *embedded], dim=1)
             else:  
                 X = embedded 
-        
+                
         for l in self.layers:
             X = l(X)
+            
         return X
     
     def adapt(self, shape):
@@ -73,13 +74,86 @@ class CModel(nn.Module):
         for l in self.ffunit(shape[0], shape[1], 0.2)[::-1]:
             self.layers.insert(0, l)
             
-    def ffunit(self, D_in, D_out, drop, activation=nn.SELU):
+    def ff_unit(self, D_in, D_out, drop, activation=nn.SELU):
         ffu = []
         ffu.append(nn.BatchNorm1d(D_in))
         ffu.append(nn.Linear(D_in, D_out))
         ffu.append(activation())
         ffu.append(nn.Dropout(drop))
-        return ffu
+        return nn.Sequential(*ffu)
+    
+    def attention(self):
+        pass
+    
+    def conv_unit(self, in_channels, out_channels):
+        res = []
+        res.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, 
+                             stride=1, padding=0, dilation=1, bias=False))
+        res.append(nn.BatchNorm2d(out_channels))
+        res.append(nn.ReLU())
+        res.append(nn.Conv2d(out_channels, out_channels, kernel_size=3, 
+                             stride=1, padding=0, dilation=1, bias=False))
+        res.append(nn.BatchNorm2d(out_channels))
+        return nn.Sequential(*res)
+        
+
+class ResNet(CModel):
+    
+    def __init__(self, n_classes, residuals=False, embed=[]):
+        super().__init__()
+        self.residuals = residuals
+        layers = []
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, 
+                               padding=3, dilation=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.activation = nn.ReLU()
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.unit1 = self.conv_unit(64, 64)
+        self.unit2 = self.conv_unit(64, 128)
+        self.unit3 = self.conv_unit(128, 256)
+        self.unit4 = self.conv_unit(256, 512)
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.fc = nn.Linear(512, n_classes)
+        print('ResNet model loaded...')
+        
+    def forward(self, X=None):
+        res = 0
+        
+        X = self.conv1(X)
+        X = self.bn1(X)
+        X = self.activation(X)
+        X = self.maxpool(X)
+        
+        if self.residuals:
+            res = X.clone()
+        X = self.unit1(X)
+        X += res
+        X = self.activation(X)
+        
+        if self.residuals:
+            res = X.clone()
+        X = self.unit2(X)
+        X += res
+        X = self.activation(X)
+        
+        if self.residuals:
+            res = X.clone()
+        X = self.unit3(X)
+        X += res
+        X = self.activation(X)
+        
+        if self.residuals:
+            res = X.clone()
+        X = self.unit4(X)
+        X += res
+        X = self.activation(X)
+        
+        X = self.avgpool(X)
+        X = flatten(X, 1)
+        X = self.fc(X)
+            
+        return X
+
     
 class FFNet(CModel):
     
@@ -94,9 +168,9 @@ class FFNet(CModel):
         
         config = FFNet.model_config[model_name]
         layers = []
-        layers.append(self.ffunit(D_in, int(config['shape'][0][1]*H), config['dropout'][0]))
+        layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), config['dropout'][0]))
         for i, s in enumerate(config['shape'][1:-1]):
-            layers.append(self.ffunit(int(s[0]*H), int(s[1]*H), config['dropout'][i]))
+            layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), config['dropout'][i]))
         layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.layers = nn.ModuleList(self.layers)  
@@ -104,8 +178,4 @@ class FFNet(CModel):
         self.embeddings = self.embedding_layer(embed)
         print('FFNet model loaded...')
         
-
-        
-        
-
         

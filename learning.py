@@ -17,7 +17,7 @@ from sklearn import metrics
 
 
 class Metrics():
-    
+    #TODO checkpointing and early stopping
     def __init__(self, report_interval=10, sk_metric_name=None, sk_params={}):
         
         self.start = datetime.now()
