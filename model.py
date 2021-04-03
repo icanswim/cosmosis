@@ -85,38 +85,52 @@ class CModel(nn.Module):
     def attention(self):
         pass
     
-    def conv_unit(self, in_channels, out_channels):
+    def conv_unit(self, in_channels, out_channels, kernel_size=3, 
+                         stride=1, padding=1, dilation=1, bias=False):
+        conv = []
+        conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
+                             stride=stride, padding=padding, dilation=dilation, bias=bias))
+        conv.append(nn.BatchNorm2d(out_channels))
+        conv.append(nn.ReLU())
+        conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
+                             stride=stride, padding=padding, dilation=dilation, bias=bias))
+        conv.append(nn.BatchNorm2d(out_channels))
+        return nn.Sequential(*conv)
+    
+    def bottleneck(self):
+        pass
+    
+    def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1)
         res = []
-        res.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, 
-                             stride=1, padding=0, dilation=1, bias=False))
-        res.append(nn.BatchNorm2d(out_channels))
-        res.append(nn.ReLU())
-        res.append(nn.Conv2d(out_channels, out_channels, kernel_size=3, 
-                             stride=1, padding=0, dilation=1, bias=False))
+        res.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
+                                                                     stride=stride))
         res.append(nn.BatchNorm2d(out_channels))
         return nn.Sequential(*res)
-        
 
 class ResNet(CModel):
     
-    def __init__(self, n_classes, residuals=False, embed=[]):
+    def __init__(self, n_classes, in_channels, residuals=False, embed=[]):
         super().__init__()
         self.residuals = residuals
         layers = []
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, 
-                               padding=3, dilation=1, bias=False)
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, 
+                                           padding=3, dilation=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.activation = nn.ReLU()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.unit1 = self.conv_unit(64, 64)
-        self.unit2 = self.conv_unit(64, 128)
-        self.unit3 = self.conv_unit(128, 256)
+        self.unit1 = self.conv_unit(64, 64, stride=1)
+        
+        self.unit2 = self.conv_unit(64, 128, stride=1)
+        self.res2 = self.res_connect(64, 128, kernel_size=1, stride=1)
+        self.unit3 = self.conv_unit(128, 256, stride=1)
+        self.res3 = self.res_connect(128, 256, kernel_size=1, stride=1)
         self.unit4 = self.conv_unit(256, 512)
+        self.res4 = self.res_connect(256, 512, kernel_size=1, stride=1)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(512, n_classes)
         print('ResNet model loaded...')
         
-    def forward(self, X=None):
+    def forward(self, X):
         res = 0
         
         X = self.conv1(X)
@@ -131,19 +145,22 @@ class ResNet(CModel):
         X = self.activation(X)
         
         if self.residuals:
-            res = X.clone()
+            clone = X.clone()
+            res = self.res2(clone)
         X = self.unit2(X)
         X += res
         X = self.activation(X)
         
         if self.residuals:
-            res = X.clone()
+            clone = X.clone()
+            res = self.res3(clone)
         X = self.unit3(X)
         X += res
         X = self.activation(X)
         
         if self.residuals:
-            res = X.clone()
+            clone = X.clone()
+            res = self.res4(clone)
         X = self.unit4(X)
         X += res
         X = self.activation(X)
