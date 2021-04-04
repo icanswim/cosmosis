@@ -117,7 +117,7 @@ class Selector(Sampler):
     """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
-                 splits=(.7,.15), set_seed=False):
+                 splits=(.7,.15), set_seed=False, subset=False):
         self.set_seed = set_seed
         
         if dataset_idx == None:  
@@ -130,7 +130,11 @@ class Selector(Sampler):
         if set_seed: 
             random.seed(set_seed)
             
-        random.shuffle(self.dataset_idx)                
+        random.shuffle(self.dataset_idx) 
+        if subset:
+            sub = int(len(self.dataset_idx)*subset)
+            self.dataset_idx = self.dataset_idx[:sub]
+            
         if len(splits) == 1:  
             cut1 = int(len(self.dataset_idx)*splits[0])
             self.train_idx = self.dataset_idx[:cut1]

@@ -86,7 +86,7 @@ class CModel(nn.Module):
         pass
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
-                         stride=1, padding=1, dilation=1, bias=False):
+                  stride=1, padding=1, dilation=1, groups=1, bias=False):
         conv = []
         conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
                              stride=stride, padding=padding, dilation=dilation, bias=bias))
@@ -100,35 +100,43 @@ class CModel(nn.Module):
     def bottleneck(self):
         pass
     
-    def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1)
+    def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1):
         res = []
         res.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
                                                                      stride=stride))
         res.append(nn.BatchNorm2d(out_channels))
         return nn.Sequential(*res)
 
-class ResNet(CModel):
+class ResBam(CModel):
     
-    def __init__(self, n_classes, in_channels, residuals=False, embed=[]):
+    def __init__(self, n_classes, in_channels, groups=1, residuals=False, bam=False, embed=[]):
         super().__init__()
         self.residuals = residuals
+        self.bam = bam
         layers = []
-        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, 
-                                           padding=3, dilation=1, bias=False)
+        
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=9, stride=2, 
+                                           padding=5, dilation=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.activation = nn.ReLU()
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.unit1 = self.conv_unit(64, 64, stride=1)
+        self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit2 = self.conv_unit(64, 128, stride=1)
-        self.res2 = self.res_connect(64, 128, kernel_size=1, stride=1)
-        self.unit3 = self.conv_unit(128, 256, stride=1)
-        self.res3 = self.res_connect(128, 256, kernel_size=1, stride=1)
-        self.unit4 = self.conv_unit(256, 512)
-        self.res4 = self.res_connect(256, 512, kernel_size=1, stride=1)
+        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups)
+        self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
+        
+        self.unit2 = self.conv_unit(128, 256, stride=1, groups=groups)
+        self.res2 = self.res_connect(128, 256, kernel_size=1, stride=1)
+        
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups)
+        self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
+        
+        self.unit4 = self.conv_unit(512, 256, stride=1, groups=groups)
+        self.res4 = self.res_connect(512, 256, kernel_size=1, stride=1)
+        
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(512, n_classes)
-        print('ResNet model loaded...')
+        self.fc = nn.Linear(256, n_classes)
+        
+        print('ResBam model loaded...')
         
     def forward(self, X):
         res = 0
@@ -137,9 +145,10 @@ class ResNet(CModel):
         X = self.bn1(X)
         X = self.activation(X)
         X = self.maxpool(X)
-        
+
         if self.residuals:
-            res = X.clone()
+            clone = X.clone()
+            res = self.res1(clone)
         X = self.unit1(X)
         X += res
         X = self.activation(X)
@@ -164,11 +173,10 @@ class ResNet(CModel):
         X = self.unit4(X)
         X += res
         X = self.activation(X)
-        
+                
         X = self.avgpool(X)
         X = flatten(X, 1)
         X = self.fc(X)
-            
         return X
 
     
