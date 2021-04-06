@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
 
 from math import sqrt
-import math
 
-from torch import nn, cat, squeeze, softmax, Tensor, flatten, sigmoid
+from torch import nn, cat, squeeze, softmax, Tensor, flatten, sigmoid, max, mean
 from torch.nn import functional as F
 
 import torchvision.models as torchvisionmodels
@@ -20,15 +19,45 @@ def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
     print('TorchVision model {} loaded...'.format(model_name))
     return model
 
+def logsumexp_2d(tensor):
+    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
+    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
+    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
+    return outputs
 
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
     
+
+class BasicConv(nn.Module):
+    def __init__(self, in_planes, out_planes, kernel_size, 
+                 stride=1, padding=0, dilation=1, groups=1, 
+                             relu=True, bn=True, bias=False):
+        super().__init__()
+        self.out_channels = out_planes
+        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, 
+                              stride=stride, padding=padding, dilation=dilation, 
+                                                          groups=groups, bias=bias)
+        self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
+        self.relu = nn.ReLU() if relu else None
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.bn is not None:
+            x = self.bn(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
     
-class ChannelGate(nn.Module):
+class ChannelGateB(nn.Module):
     def __init__(self, gate_channel, reduction_ratio=16, num_layers=1):
-        super(ChannelGate, self).__init__()
+        super().__init__()
         self.gate_c = nn.Sequential()
         self.gate_c.add_module('flatten', Flatten())
         gate_channels = [gate_channel]
@@ -43,11 +72,53 @@ class ChannelGate(nn.Module):
     def forward(self, in_tensor):
         avg_pool = F.avg_pool2d(in_tensor, in_tensor.size(2), stride=in_tensor.size(2))
         return self.gate_c(avg_pool).unsqueeze(2).unsqueeze(3).expand_as(in_tensor)
+    
+class ChannelGateC(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        super().__init__()
+        self.gate_channels = gate_channels
+        self.mlp = nn.Sequential(
+            Flatten(),
+            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+            nn.ReLU(),
+            nn.Linear(gate_channels // reduction_ratio, gate_channels)
+            )
+        self.pool_types = pool_types
+        
+    def forward(self, x):
+        channel_att_sum = None
+        for pool_type in self.pool_types:
+            if pool_type=='avg':
+                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( avg_pool )
+            elif pool_type=='max':
+                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( max_pool )
+            elif pool_type=='lp':
+                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp( lp_pool )
+            elif pool_type=='lse':
+                # LSE pool only
+                lse_pool = logsumexp_2d(x)
+                channel_att_raw = self.mlp( lse_pool )
+
+            if channel_att_sum is None:
+                channel_att_sum = channel_att_raw
+            else:
+                channel_att_sum = channel_att_sum + channel_att_raw
+
+        scale = sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
+        return x * scale
+    
+
+class ChannelPool(nn.Module):
+    def forward(self, x):
+        return cat((max(x,1)[0].unsqueeze(1), mean(x,1).unsqueeze(1)), dim=1)
 
     
-class SpatialGate(nn.Module):
+class SpatialGateB(nn.Module):
     def __init__(self, gate_channel, reduction_ratio=16, dilation_conv_num=2, dilation_val=4):
-        super(SpatialGate, self).__init__()
+        super().__init__()
         self.gate_s = nn.Sequential()
         self.gate_s.add_module('gate_s_conv_reduce0', nn.Conv2d(
                                gate_channel, gate_channel//reduction_ratio, kernel_size=1))
@@ -63,18 +134,45 @@ class SpatialGate(nn.Module):
         self.gate_s.add_module('gate_s_conv_final', nn.Conv2d(gate_channel//reduction_ratio, 
                                                                             1, kernel_size=1))
     def forward(self, in_tensor):
-        return self.gate_s(in_tensor).expand_as(in_tensor)
+        return self.gate_s(in_tensor).expand_as(in_tensor)   
+
     
+class SpatialGateC(nn.Module):
+    def __init__(self):
+        super().__init__()
+        kernel_size = 7
+        self.compress = ChannelPool()
+        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
+    def forward(self, x):
+        x_compress = self.compress(x)
+        x_out = self.spatial(x_compress)
+        scale = sigmoid(x_out) # broadcasting
+        return x * scale
+
     
 class BAM(nn.Module):
     def __init__(self, gate_channel):
-        super(BAM, self).__init__()
-        self.channel_att = ChannelGate(gate_channel)
-        self.spatial_att = SpatialGate(gate_channel)
+        super().__init__()
+        self.channel_att = ChannelGateB(gate_channel)
+        self.spatial_att = SpatialGateB(gate_channel)
         
     def forward(self,in_tensor):
         att = 1 + sigmoid(self.channel_att(in_tensor) * self.spatial_att(in_tensor))
-        return att * in_tensor
+        return att * in_tensor   
+    
+    
+class CBAM(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+        super().__init__()
+        self.ChannelGate = ChannelGateC(gate_channels, reduction_ratio, pool_types)
+        self.no_spatial=no_spatial
+        if not no_spatial:
+            self.SpatialGate = SpatialGateC()
+    def forward(self, x):
+        x_out = self.ChannelGate(x)
+        if not self.no_spatial:
+            x_out = self.SpatialGate(x_out)
+        return x_out
 
     
 class CModel(nn.Module):
@@ -138,6 +236,7 @@ class CModel(nn.Module):
         ffu.append(nn.Linear(D_in, D_out))
         ffu.append(activation())
         ffu.append(nn.Dropout(drop))
+        
         return nn.Sequential(*ffu)
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
@@ -151,6 +250,9 @@ class CModel(nn.Module):
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                              stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
+        if cbam:
+            conv.append(CBAM(out_channels))
+                        
         return nn.Sequential(*conv)
     
     def bottleneck(self):
@@ -161,9 +263,15 @@ class CModel(nn.Module):
         res.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
                                                                      stride=stride))
         res.append(nn.BatchNorm2d(out_channels))
+        
         return nn.Sequential(*res)
 
 class ResBam(CModel):
+    """ConvNet with options for residual connections and attention units and NeXt groupings
+    https://arxiv.org/abs/1512.03385
+    https://arxiv.org/abs/1611.05431
+    https://arxiv.org/abs/1807.06521v2
+    """
     
     def __init__(self, n_classes, in_channels, groups=1, residuals=False, bam=False, embed=[]):
         super().__init__()
@@ -177,18 +285,15 @@ class ResBam(CModel):
         self.activation = nn.ReLU()
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit1 = self.conv_unit(64, 128, stride=2, groups=groups)
-        self.cbam1 = CBAM()
+        self.unit1 = self.conv_unit(64, 128, stride=2, groups=groups, cbam=bam)
         self.res1 = self.res_connect(64, 128, kernel_size=1, stride=4)
         self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups)
-        self.cbam2 = CBAM()
+        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, cbam=bam)
         self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
         self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups)
-        self.cbam3 = CBAM()
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, cbam=bam)
         self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
         self.bam3 = BAM(512)
         
