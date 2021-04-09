@@ -35,7 +35,6 @@ class BasicConv(nn.Module):
                  stride=1, padding=0, dilation=1, groups=1, 
                              relu=True, bn=True, bias=False):
         super().__init__()
-        self.out_channels = out_planes
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, 
                                                           groups=groups, bias=bias)
@@ -49,6 +48,41 @@ class BasicConv(nn.Module):
         if self.relu is not None:
             x = self.relu(x)
         return x
+
+class FFUnit(nn.Module):
+        
+    def __init__(self, D_in, D_out, drop, activation=nn.SELU, bam=False):
+        ffu = []
+        ffu.append(nn.Linear(D_in, D_out))
+        ffu.append(activation())
+        ffu.append(nn.BatchNorm1d(D_out))
+        if bam: ffu.append(BAM(D_out)) 
+        ffu.append(nn.Dropout(drop))
+        
+        self.layers = nn.Sequential(*ffu)
+        
+    def forward(self, x):
+        return self.layers(x)
+    
+    
+class ConvUnit(nn.Module):
+    def __init__(self,  in_channels, out_channels, kernel_size=3, 
+                 stride=1, padding=1, dilation=1, groups=1, bias=False, 
+                 activation=None, cbam=False):
+        conv = []
+        conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
+                              stride=stride, padding=padding, dilation=dilation, bias=bias))
+        conv.append(nn.BatchNorm2d(out_channels))
+        if activation: conv.append(activation())
+        conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
+                              stride=stride, padding=padding, dilation=dilation, bias=bias))
+        if cbam: conv.append(CBAM(out_channels))
+        if dropout: conv.append(nn.Dropout(p=dropout))
+                      
+        self.layers = nn.Sequential(*conv)
+                 
+    def forward(self, x):
+        return self.layers(x)
 
 class Flatten(nn.Module):
     def forward(self, x):
@@ -230,34 +264,31 @@ class CModel(nn.Module):
         for l in self.ffunit(shape[0], shape[1], 0.2)[::-1]:
             self.layers.insert(0, l)
             
-    def ff_unit(self, D_in, D_out, drop, activation=nn.SELU):
+    def ff_unit(self, D_in, D_out, dropout=False, activation=nn.SELU, bam=False):
+        
         ffu = []
-        ffu.append(nn.BatchNorm1d(D_in))
         ffu.append(nn.Linear(D_in, D_out))
         ffu.append(activation())
-        ffu.append(nn.Dropout(drop))
+        ffu.append(nn.BatchNorm1d(D_out))
+        if bam: ffu.append(BAM(D_out))
+        if dropout:  ffu.append(nn.Dropout(drop))
         
         return nn.Sequential(*ffu)
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
                   stride=1, padding=1, dilation=1, groups=1, bias=False, 
-                  activation=None, cbam=False):
+                  activation=None, cbam=False, dropout=False):
         conv = []
         conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
-                             stride=stride, padding=padding, dilation=dilation, bias=bias))
+                              stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
-        if activation:
-            conv.append(activation())
+        if activation: conv.append(activation())
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
-                             stride=stride, padding=padding, dilation=dilation, bias=bias))
-        conv.append(nn.BatchNorm2d(out_channels))
-        if cbam:
-            conv.append(CBAM(out_channels))
+                              stride=stride, padding=padding, dilation=dilation, bias=bias))
+        if cbam: conv.append(CBAM(out_channels))
+        if dropout: conv.append(nn.Dropout(p=dropout))
                         
         return nn.Sequential(*conv)
-    
-    def bottleneck(self):
-        pass
     
     def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1):
         res = []
@@ -275,7 +306,8 @@ class ResBam(CModel):
     CBAM https://arxiv.org/abs/1807.06521v2
     """
     
-    def __init__(self, n_classes, in_channels, groups=1, residuals=False, bam=False, embed=[]):
+    def __init__(self, n_classes, in_channels, groups=1, 
+                 residuals=False, bam=False, dropoout=False, embed=[]):
         super().__init__()
         self.residuals = residuals
         self.bam = bam
@@ -287,19 +319,23 @@ class ResBam(CModel):
         self.activation = nn.SELU()
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, activation=nn.SELU, cbam=bam)
+        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, 
+                                    activation=nn.SELU, cbam=bam, dropout=.1)
         self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
         self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, activation=nn.SELU, cbam=bam)
+        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, 
+                                    activation=nn.SELU, cbam=bam, dropout=.2)
         self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
         self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, activation=nn.SELU, cbam=bam)
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, 
+                                    activation=nn.SELU, cbam=bam, dropout=.3)
         self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
         self.bam3 = BAM(512)
         
-        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, activation=None, cbam=False)
+        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, 
+                                    activation=None, cbam=False, dropout=0)
         self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
@@ -369,9 +405,9 @@ class FFNet(CModel):
         
         config = FFNet.model_config[model_name]
         layers = []
-        layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), config['dropout'][0]))
+        layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
         for i, s in enumerate(config['shape'][1:-1]):
-            layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), config['dropout'][i]))
+            layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), dropout=config['dropout'][i]))
         layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.layers = nn.ModuleList(self.layers)  

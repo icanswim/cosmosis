@@ -110,7 +110,6 @@ class Metrics():
 
 class Selector(Sampler):
     """splits = (.8,) or (.7,.15) or None
-    
     """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
