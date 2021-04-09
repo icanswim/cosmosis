@@ -111,9 +111,6 @@ class Metrics():
 class Selector(Sampler):
     """splits = (.8,) or (.7,.15) or None
     
-    single ds use splits with 2 values to make train/val/test sets
-    double ds use splits with 1 value to make train/val set and second ds for test
-    triple ds use splits None 
     """
    
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,

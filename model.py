@@ -241,12 +241,13 @@ class CModel(nn.Module):
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
                   stride=1, padding=1, dilation=1, groups=1, bias=False, 
-                  activation=nn.SELU, cbam=False):
+                  activation=None, cbam=False):
         conv = []
         conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
                              stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
-        conv.append(activation())
+        if activation:
+            conv.append(activation())
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                              stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
@@ -268,9 +269,10 @@ class CModel(nn.Module):
 
 class ResBam(CModel):
     """ConvNet with options for residual connections and attention units and NeXt groupings
-    https://arxiv.org/abs/1512.03385
-    https://arxiv.org/abs/1611.05431
-    https://arxiv.org/abs/1807.06521v2
+
+    ResNet https://arxiv.org/abs/1512.03385
+    ResNeXt https://arxiv.org/abs/1611.05431
+    CBAM https://arxiv.org/abs/1807.06521v2
     """
     
     def __init__(self, n_classes, in_channels, groups=1, residuals=False, bam=False, embed=[]):
@@ -282,27 +284,27 @@ class ResBam(CModel):
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=9, stride=2, 
                                            padding=5, dilation=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.activation = nn.ReLU()
+        self.activation = nn.SELU()
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit1 = self.conv_unit(64, 128, stride=2, groups=groups, cbam=bam)
-        self.res1 = self.res_connect(64, 128, kernel_size=1, stride=4)
+        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, activation=nn.SELU, cbam=bam)
+        self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
         self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, cbam=bam)
+        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, activation=nn.SELU, cbam=bam)
         self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
         self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, cbam=bam)
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, activation=nn.SELU, cbam=bam)
         self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
         self.bam3 = BAM(512)
         
-        self.unit4 = self.conv_unit(512, 256, stride=2, groups=groups)
-        self.res4 = self.res_connect(512, 256, kernel_size=1, stride=4)
+        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, activation=None, cbam=False)
+        self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(256, n_classes)
-        
+        self.fc = nn.Linear(1024, n_classes)
+
         print('ResBam model loaded...')
         
     def forward(self, X):
