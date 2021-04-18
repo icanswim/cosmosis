@@ -16,6 +16,7 @@ def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
     if model_name in ['resnet18','resnet34','resnet50','wide_resnet50_2','resnext50_32x4d']:
         model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
                                 kernel_size=7, stride=2, padding=3, bias=False)
+        
     print('TorchVision model {} loaded...'.format(model_name))
     return model
 
@@ -50,14 +51,13 @@ class BasicConv(nn.Module):
         return x
 
 class FFUnit(nn.Module):
-        
-    def __init__(self, D_in, D_out, drop, activation=nn.SELU, bam=False):
+    def __init__(self, D_in, D_out, dropout=False, activation=nn.SELU):
         ffu = []
         ffu.append(nn.Linear(D_in, D_out))
         ffu.append(activation())
         ffu.append(nn.BatchNorm1d(D_out))
         if bam: ffu.append(BAM(D_out)) 
-        ffu.append(nn.Dropout(drop))
+        if dropout: ffu.append(nn.Dropout(drop))
         
         self.layers = nn.Sequential(*ffu)
         
@@ -74,6 +74,9 @@ class ConvUnit(nn.Module):
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
         if activation: conv.append(activation())
+        if pool: 
+            conv.append(nn.MaxPool2d(2, stride=2, padding=1))
+            out_channels = out_channels/2
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         if cbam: conv.append(CBAM(out_channels))
@@ -148,7 +151,20 @@ class ChannelGateC(nn.Module):
 class ChannelPool(nn.Module):
     def forward(self, x):
         return cat((max(x,1)[0].unsqueeze(1), mean(x,1).unsqueeze(1)), dim=1)
-
+    
+    
+class SpatialGateC(nn.Module):
+    def __init__(self):
+        super().__init__()
+        kernel_size = 7
+        self.compress = ChannelPool()
+        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
+    def forward(self, x):
+        x_compress = self.compress(x)
+        x_out = self.spatial(x_compress)
+        scale = sigmoid(x_out) # broadcasting
+        return x * scale
+    
     
 class SpatialGateB(nn.Module):
     def __init__(self, gate_channel, reduction_ratio=16, dilation_conv_num=2, dilation_val=4):
@@ -168,20 +184,7 @@ class SpatialGateB(nn.Module):
         self.gate_s.add_module('gate_s_conv_final', nn.Conv2d(gate_channel//reduction_ratio, 
                                                                             1, kernel_size=1))
     def forward(self, in_tensor):
-        return self.gate_s(in_tensor).expand_as(in_tensor)   
-
-    
-class SpatialGateC(nn.Module):
-    def __init__(self):
-        super().__init__()
-        kernel_size = 7
-        self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
-    def forward(self, x):
-        x_compress = self.compress(x)
-        x_out = self.spatial(x_compress)
-        scale = sigmoid(x_out) # broadcasting
-        return x * scale
+        return self.gate_s(in_tensor).expand_as(in_tensor)
 
     
 class BAM(nn.Module):
@@ -199,7 +202,7 @@ class CBAM(nn.Module):
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
         super().__init__()
         self.ChannelGate = ChannelGateC(gate_channels, reduction_ratio, pool_types)
-        self.no_spatial=no_spatial
+        self.no_spatial = no_spatial
         if not no_spatial:
             self.SpatialGate = SpatialGateC()
     def forward(self, x):
@@ -218,6 +221,24 @@ class CModel(nn.Module):
         print('CModel loaded...')
         #self.embeddings = self.embedding_layer(embed)
         #self.layers = nn.ModuleList()
+        #self.weight_init()
+    
+    def weight_init(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.GroupNorm):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.InstanceNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
         
     def embedding_layer(self, embed):
         if len(embed) == 0:
@@ -264,25 +285,27 @@ class CModel(nn.Module):
         for l in self.ffunit(shape[0], shape[1], 0.2)[::-1]:
             self.layers.insert(0, l)
             
-    def ff_unit(self, D_in, D_out, dropout=False, activation=nn.SELU, bam=False):
+    def ff_unit(self, D_in, D_out, dropout=False, activation=nn.SELU):
         
         ffu = []
         ffu.append(nn.Linear(D_in, D_out))
-        ffu.append(activation())
+        if activation: ffu.append(activation())
         ffu.append(nn.BatchNorm1d(D_out))
-        if bam: ffu.append(BAM(D_out))
-        if dropout:  ffu.append(nn.Dropout(drop))
+        if dropout:  ffu.append(nn.Dropout(dropout))
         
         return nn.Sequential(*ffu)
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
                   stride=1, padding=1, dilation=1, groups=1, bias=False, 
-                  activation=None, cbam=False, dropout=False):
+                  activation=None, cbam=False, dropout=False, pool=False):
         conv = []
-        conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
+        conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
         if activation: conv.append(activation())
+        if pool: 
+            conv.append(nn.MaxPool2d(2, stride=2, padding=1))
+            out_channels = out_channels/2
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         if cbam: conv.append(CBAM(out_channels))
@@ -306,8 +329,8 @@ class ResBam(CModel):
     CBAM https://arxiv.org/abs/1807.06521v2
     """
     
-    def __init__(self, n_classes, in_channels, groups=1, 
-                 residuals=False, bam=False, dropoout=False, embed=[]):
+    def __init__(self, n_classes, in_channels, groups=1, residuals=False, pool=False,
+                 bam=False, dropout=[False,False,False,False,False], embed=[], act=nn.SELU):
         super().__init__()
         self.residuals = residuals
         self.bam = bam
@@ -316,30 +339,30 @@ class ResBam(CModel):
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=9, stride=2, 
                                            padding=5, dilation=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.activation = nn.SELU()
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, 
-                                    activation=nn.SELU, cbam=bam, dropout=.1)
-        self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
-        self.bam1 = BAM(128)
+        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, pool=pool,
+                                    activation=act, cbam=bam, dropout=dropout[0])
+        if residuals: self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
+        if bam: self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, 
-                                    activation=nn.SELU, cbam=bam, dropout=.2)
-        self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
-        self.bam2 = BAM(256)
+        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, pool=pool,
+                                    activation=act, cbam=bam, dropout=dropout[1])
+        if residual: self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
+        if bam: self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, 
-                                    activation=nn.SELU, cbam=bam, dropout=.3)
-        self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
-        self.bam3 = BAM(512)
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, pool=pool,
+                                    activation=act, cbam=bam, dropout=dropout[2])
+        if residuals: self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
+        if bam: self.bam3 = BAM(512)
         
-        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, 
-                                    activation=None, cbam=False, dropout=0)
-        self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
+        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, pool=pool,
+                                    activation=None, cbam=False, dropout=dropout[3])
+        if residuals: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(1024, n_classes)
+        self.fc = self.ff_unit(1024, n_classes, dropout=dropout[4], activation=False)
+        self.weight_init()
 
         print('ResBam model loaded...')
         
@@ -411,8 +434,9 @@ class FFNet(CModel):
         layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.layers = nn.ModuleList(self.layers)  
-    
         self.embeddings = self.embedding_layer(embed)
+        self.weight_init()
+
         print('FFNet model loaded...')
         
         
