@@ -286,7 +286,6 @@ class CModel(nn.Module):
             self.layers.insert(0, l)
             
     def ff_unit(self, D_in, D_out, dropout=False, activation=nn.SELU):
-        
         ffu = []
         ffu.append(nn.Linear(D_in, D_out))
         if activation: ffu.append(activation())
@@ -304,8 +303,7 @@ class CModel(nn.Module):
         conv.append(nn.BatchNorm2d(out_channels))
         if activation: conv.append(activation())
         if pool: 
-            conv.append(nn.MaxPool2d(2, stride=2, padding=1))
-            out_channels = out_channels/2
+            conv.append(nn.MaxPool2d(kernel_size=5, stride=2, padding=1))
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         if cbam: conv.append(CBAM(out_channels))
@@ -328,37 +326,37 @@ class ResBam(CModel):
     ResNeXt https://arxiv.org/abs/1611.05431
     CBAM https://arxiv.org/abs/1807.06521v2
     """
-    
-    def __init__(self, n_classes, in_channels, groups=1, residuals=False, pool=False,
-                 bam=False, dropout=[False,False,False,False,False], embed=[], act=nn.SELU):
+    def __init__(self, n_classes, in_channels, groups=1, residual=False, bam=False, 
+                 dropout=[False,False,False,False,False], embed=[], act=nn.SELU):
         super().__init__()
-        self.residuals = residuals
+        self.residual = residual
         self.bam = bam
+        self.activation = nn.SELU()
         layers = []
         
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=9, stride=2, 
                                            padding=5, dilation=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.bn = nn.BatchNorm2d(64)
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         
-        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, pool=pool,
+        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, 
                                     activation=act, cbam=bam, dropout=dropout[0])
-        if residuals: self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
+        if residual: self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
         if bam: self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups, pool=pool,
+        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups,
                                     activation=act, cbam=bam, dropout=dropout[1])
         if residual: self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
         if bam: self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups, pool=pool,
+        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups,
                                     activation=act, cbam=bam, dropout=dropout[2])
-        if residuals: self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
+        if residual: self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
         if bam: self.bam3 = BAM(512)
         
-        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups, pool=pool,
+        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups,
                                     activation=None, cbam=False, dropout=dropout[3])
-        if residuals: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
+        if residual: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = self.ff_unit(1024, n_classes, dropout=dropout[4], activation=False)
@@ -370,11 +368,11 @@ class ResBam(CModel):
         res = 0
         
         X = self.conv1(X)
-        X = self.bn1(X)
+        X = self.bn(X)
         X = self.activation(X)
         X = self.maxpool(X)
 
-        if self.residuals:
+        if self.residual:
             clone = X.clone()
             res = self.res1(clone)
         X = self.unit1(X)
@@ -383,7 +381,7 @@ class ResBam(CModel):
         if self.bam:
             X = self.bam1(X)
         
-        if self.residuals:
+        if self.residual:
             clone = X.clone()
             res = self.res2(clone)
         X = self.unit2(X)
@@ -392,7 +390,7 @@ class ResBam(CModel):
         if self.bam:
             X = self.bam2(X)
         
-        if self.residuals:
+        if self.residual:
             clone = X.clone()
             res = self.res3(clone)
         X = self.unit3(X)
@@ -401,7 +399,7 @@ class ResBam(CModel):
         if self.bam:
             X = self.bam3(X)
         
-        if self.residuals:
+        if self.residual:
             clone = X.clone()
             res = self.res4(clone)
         X = self.unit4(X)
@@ -416,7 +414,6 @@ class ResBam(CModel):
 
     
 class FFNet(CModel):
-    
     model_config = {}
     model_config['simple'] = {'shape': [('D_in',1),(1,1),(1,1/2),(1/2,'D_out')], 
                               'dropout': [.2, .3, .1]}
