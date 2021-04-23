@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 import os, re, random, h5py, pickle
 
-from operator import add
-
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 import numpy as np
@@ -66,26 +64,27 @@ class CDataset(Dataset, ABC):
     def load_data(self):
         return data
     
-class ImageStats(ImageStat.Stat):
+class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
     def __add__(self, other):
-        return (ImageStats(list(map(add, self.h, other.h))))
+        return ImStat(list(map(np.add, self.h, other.h)))
     
 class ImageDatasetStats():
     """A class for calculating an image datasets mean and std dev"""
-    def __init__(self):
+    def __init__(self, dataset):
         self.stats = None
-        self.i = 1
-    
-    def __call__(self, image):
-        if self.stats is None:
-            self.stats = ImageStats(image[j])
-        else:
-            self.stats += ImageStats(image[j])
-            self.i += 1
-            if self.i % 1000 == 0:
-                print('image {} processed...'.format(self.i))
-        
+        i = 1
+        print('images to process: {}'.format(len(dataset.ds_idx)))
+        for image in dataset:
+            if self.stats == None:
+                self.stats = ImStat(image[0])
+            else: 
+                self.stats += ImStat(image[0])
+                i += 1
+            if i % 10000 == 0:
+                print('images processed: {}'.format(i))
+        print('mean: {}, stddev: {}'.format(self.stats.mean, self.stats.stddev))
+                
 class LoadImage():
     """A transformer for use with image file based datasets
     transforms (loads) an image filename into a PIL image"""
