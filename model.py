@@ -232,7 +232,7 @@ class CModel(nn.Module):
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
-                nn.init.kaiming_normal_(m.weight)
+                #nn.init.kaiming_normal_(m.weight)
             elif isinstance(m, nn.GroupNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
