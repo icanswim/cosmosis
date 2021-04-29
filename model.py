@@ -302,8 +302,7 @@ class CModel(nn.Module):
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
         if activation: conv.append(activation())
-        if pool: 
-            conv.append(nn.MaxPool2d(kernel_size=5, stride=2, padding=1))
+        if pool: conv.append(nn.MaxPool2d(kernel_size=5, stride=2, padding=1))
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         if cbam: conv.append(CBAM(out_channels))
@@ -327,17 +326,16 @@ class ResBam(CModel):
     CBAM https://arxiv.org/abs/1807.06521v2
     """
     def __init__(self, n_classes, in_channels, groups=1, residual=False, bam=False, 
-                 dropout=[False,False,False,False,False], embed=[], act=nn.SELU):
+                 dropout=[False,False,False,False,False], embed=[], act=nn.LeakyReLU):
         super().__init__()
         self.residual = residual
         self.bam = bam
-        self.activation = nn.SELU()
-        layers = []
         
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=9, stride=2, 
                                            padding=5, dilation=1, bias=False)
         self.bn = nn.BatchNorm2d(64)
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
+        self.activation = nn.SELU()
         
         self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, 
                                     activation=act, cbam=bam, dropout=dropout[0])
@@ -359,7 +357,8 @@ class ResBam(CModel):
         if residual: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = self.ff_unit(1024, n_classes, dropout=dropout[4], activation=False)
+        self.fc = self.ff_unit(1024, n_classes, dropout=dropout[4], activation=None)
+        
         self.weight_init()
 
         print('ResBam model loaded...')

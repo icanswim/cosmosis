@@ -5,7 +5,7 @@ import pandas as pd
 from pandas.api.types import CategoricalDtype
 import numpy as np
 
-from torch.utils.data import Dataset, IterableDataset, ConcatDataset
+from torch.utils.data import Dataset, ConcatDataset
 from torch import as_tensor, cat, squeeze
 
 from torchvision import datasets as tvds
@@ -55,7 +55,11 @@ class CDataset(Dataset, ABC):
             embed_idx.append(as_tensor(
                 np.asarray(self.embed_lookup[embed[0]][self.data[i][2][e]], 'int64')))
         
-        return X, y, embed_idx 
+        return X, y, embed_idx
+    
+    def __iter__(self):
+        for i in self.ds_idx:
+            yield self.__getitem__(i)
     
     def __len__(self):
         return len(self.ds_idx)
