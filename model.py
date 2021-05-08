@@ -310,10 +310,10 @@ class CModel(nn.Module):
                         
         return nn.Sequential(*conv)
     
-    def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1):
+    def res_connect(self, in_channels, out_channels, kernel_size=1, stride=1, dilation=1):
         res = []
         res.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, 
-                                                                     stride=stride))
+                                                    stride=stride, dilation=dilation))
         res.append(nn.BatchNorm2d(out_channels))
         
         return nn.Sequential(*res)
@@ -337,24 +337,24 @@ class ResBam(CModel):
         self.maxpool = nn.MaxPool2d(kernel_size=5, stride=2, padding=1)
         self.activation = nn.SELU()
         
-        self.unit1 = self.conv_unit(64, 128, stride=1, groups=groups, 
+        self.unit1 = self.conv_unit(64, 128, kernel_size=3, stride=1, groups=groups, 
                                     activation=act, cbam=bam, dropout=dropout[0])
-        if residual: self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1)
+        if residual: self.res1 = self.res_connect(64, 128, kernel_size=1, stride=1, dilation=1)
         if bam: self.bam1 = BAM(128)
         
-        self.unit2 = self.conv_unit(128, 256, stride=2, groups=groups,
+        self.unit2 = self.conv_unit(128, 256, kernel_size=3, stride=2, groups=groups,
                                     activation=act, cbam=bam, dropout=dropout[1])
-        if residual: self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4)
+        if residual: self.res2 = self.res_connect(128, 256, kernel_size=1, stride=4, dilation=1)
         if bam: self.bam2 = BAM(256)
         
-        self.unit3 = self.conv_unit(256, 512, stride=2, groups=groups,
+        self.unit3 = self.conv_unit(256, 512, kernel_size=3, stride=2, groups=groups,
                                     activation=act, cbam=bam, dropout=dropout[2])
-        if residual: self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4)
+        if residual: self.res3 = self.res_connect(256, 512, kernel_size=1, stride=4, dilation=1)
         if bam: self.bam3 = BAM(512)
         
-        self.unit4 = self.conv_unit(512, 1024, stride=2, groups=groups,
+        self.unit4 = self.conv_unit(512, 1024, kernel_size=3, stride=2, groups=groups,
                                     activation=None, cbam=False, dropout=dropout[3])
-        if residual: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4)
+        if residual: self.res4 = self.res_connect(512, 1024, kernel_size=1, stride=4, dilation=1)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = self.ff_unit(1024, n_classes, dropout=dropout[4], activation=None)
@@ -364,45 +364,33 @@ class ResBam(CModel):
         print('ResBam model loaded...')
         
     def forward(self, X):
-        res = 0
         
         X = self.conv1(X)
         X = self.bn(X)
         X = self.activation(X)
         X = self.maxpool(X)
-
-        if self.residual:
-            clone = X.clone()
-            res = self.res1(clone)
+        
+        if self.residual: res = self.res1(X) 
         X = self.unit1(X)
-        X += res
+        if self.residual: X += res
         X = self.activation(X)
-        if self.bam:
-            X = self.bam1(X)
-        
-        if self.residual:
-            clone = X.clone()
-            res = self.res2(clone)
+        if self.bam: X = self.bam1(X)
+            
+        if self.residual: res = self.res2(X)    
         X = self.unit2(X)
-        X += res
+        if self.residual: X += res
         X = self.activation(X)
-        if self.bam:
-            X = self.bam2(X)
+        if self.bam: X = self.bam2(X)
         
-        if self.residual:
-            clone = X.clone()
-            res = self.res3(clone)
+        if self.residual: res = self.res3(X)
         X = self.unit3(X)
-        X += res
+        if self.residual: X += res
         X = self.activation(X)
-        if self.bam:
-            X = self.bam3(X)
-        
-        if self.residual:
-            clone = X.clone()
-            res = self.res4(clone)
+        if self.bam: X = self.bam3(X)
+            
+        if self.residual: res = self.res4(X)
         X = self.unit4(X)
-        X += res
+        if self.residual: X += res
         X = self.activation(X)
                 
         X = self.avgpool(X)
