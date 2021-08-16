@@ -1,12 +1,12 @@
 #instructions for setting up folders and conda enviornment
 
-##create a new cosmosis conda enviornment and folders
+##create a new cosmosis conda environment and folders
 git clone https://github.com/icanswim/cosmosis.git
 cd cosmosis
 mkdir data
 mkdir logs
 mkdir models
-conda create --name cosmosis --file requirements.txt
+conda env create -f environment.yml
 conda activate cosmosis
 jupyter lab
 
