@@ -87,7 +87,7 @@ class Metrics():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('sk_train_log: {}, sk_val_log: {}'.format(self.sk_train_log[-1], self.sk_val_log[-1]))
+            print('train sk metric: {}, val sk metric: {}'.format(self.sk_train_log[-1], self.sk_val_log[-1]))
             self.report_time = datetime.now()
         
     def report(self):
@@ -95,7 +95,7 @@ class Metrics():
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
         self.log('test set sklean metric: \n{} \n'.format(self.sk_val_log[-1]))
-        print('test sklean metric: \n{} \n'.format(self.sk_val_log[-1]))
+        print('test sklearn metric: \n{} \n'.format(self.sk_val_log[-1]))
         pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log),
                      columns=['train_loss','val_loss','lr','sk_metric']).to_csv(
                                             './logs/'+self.start.strftime("%Y%m%d_%H%M"))

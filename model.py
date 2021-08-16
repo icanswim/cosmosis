@@ -50,6 +50,7 @@ class BasicConv(nn.Module):
             x = self.relu(x)
         return x
 
+    
 class FFUnit(nn.Module):
     def __init__(self, D_in, D_out, dropout=False, activation=nn.SELU):
         ffu = []
@@ -109,7 +110,8 @@ class ChannelGateB(nn.Module):
     def forward(self, in_tensor):
         avg_pool = F.avg_pool2d(in_tensor, in_tensor.size(2), stride=in_tensor.size(2))
         return self.gate_c(avg_pool).unsqueeze(2).unsqueeze(3).expand_as(in_tensor)
-    
+
+
 class ChannelGateC(nn.Module):
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
         super().__init__()
