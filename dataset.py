@@ -19,44 +19,63 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
     
+    features/targets = ['data','keys'], None
+    
     embed=['feature',voc,vec,padding_idx,param.requires_grad]
         'feature' = name/key of feature to be embedded
-        voc = vocabulary size (int)
-        vec = length of the embedding vectors
-        padding_idx = False/int
-        param.requires_grad = True/False
+        voc = vocabulary size (int) (passed to CModel)
+        vec = length of the embedding vectors (passed to CModel)
+        padding_idx = False/int (passed to CModel)
+        param.requires_grad = True/False (passed to CModel)
         
-        embed parameter signals the dataset internally as to which categorical
-        features to present for embedding AND signals the model to embed
+    embed_lookup = {'label': index}
         
-    self.ds_idx = list of indices or keys to be used by the Sampler and Dataloader
+    self.ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
     
     """    
-    def __init__ (self, embed=[], embed_lookup={}, transform=False, 
-                  target_transform=False, **kwargs):
+    def __init__ (self, features=None, targets=None, 
+                  embeds=None, embed_lookup={}, 
+                  transform=False, target_transform=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
-        self.embed, self.embed_lookup = embed, embed_lookup
+        self.embeds, self.embed_lookup = embeds, embed_lookup
+        self.features, self.targets = features, targets
         self.data = self.load_data(**kwargs)
         self.ds_idx = list(self.data.keys())
         print('CDataset created...')
     
     def __getitem__(self, i):
-
-        X = self.data[i][0]
+        X, y, embed_idx = [], [], []
+        
+        if self.features:
+            X = self.data[i]['X']
+            X = self._get_features(X, self.features, dtype='float32')
         if self.transform:
             X = self.transform(X)
-            
-        y = self.data[i][1]
+               
+        if self.targets:
+            y = self.data[i]['targets']
+            y = self._get_features(y, self.targets, dtype='float64')
         if self.target_transform:
             y = self.target_transform(y)
         
-        embed_idx = []
-        for e, embed in enumerate(self.embed):
-            embed_idx.append(as_tensor(
-                np.asarray(self.embed_lookup[embed[0]][self.data[i][2][e]], 'int64')))
+        if self.embeds:
+            embeds = self.data[i]['embeds']
+            embed_idx = self._get_embed_idx(embeds, self.embed_lookup)
         
         return X, y, embed_idx
     
+    def _get_features(self, datadic, features, dtype):
+        out = []
+        for f in features:
+            out.append(np.reshape(np.asarray(datadic[f], -1).astype(dtype)))
+        return as_tensor(np.concatenate(out))
+        
+    def _get_embed_idx(self, datadic, embeds, embed_lookup):
+        embed_idx = []
+        for e in embeds:
+            embed_idx.append(np.asarray(embed_lookup[e]).astype('int64'))
+        return as_tensor(np.concatenate(embed_idx))
+            
     def __iter__(self):
         for i in self.ds_idx:
             yield self.__getitem__(i)
@@ -66,8 +85,10 @@ class CDataset(Dataset, ABC):
     
     @abstractmethod
     def load_data(self):
-        return data
-    
+        """datadic with keys X, target, embeds (with or without 'features')"""
+        return {'X': {'feature': data}}
+   
+        
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
     def __add__(self, other):
