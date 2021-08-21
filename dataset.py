@@ -85,24 +85,29 @@ class CDataset(Dataset, ABC):
         return as_tensor(np.concatenate(embed_idx))
     
     @abstractmethod
-    def load_data(self):
-        """datadic with keys X, target, embeds (with or without 'features')"""
-        datadic = {1: {'X': {'feature_a': .1,
-                             'feature_b': .2},
-                      'embeds': {'feature_c': 'a',
+    def load_data(self, **kwargs):
+        """Pass any keywords and return datadic with keys X, target, embeds
+        embed_lookup can be loaded or passed with class __init__ params"""
+        datadic = {1: {'X': {'all': [.01,.02],
+                             'feature_a': .01,
+                             'feature_b': .02},
+                       'embeds': {'feature_c': 'a',
                                   'feature_d': 'b'},
-                      'targets': {'feature_e': .3,
+                       'targets': {'feature_e': .3,
                                    'feature_f': .4}},
-                   2: {'X': {'feature_a': .5,
-                             'feature_b': .6},
-                      'embeds': {'feature_c': 'c',
-                                 'feature_d': 'd'},
-                      'targets': {'feature_e': .7,
-                                  'feature_f': .8}}}
-        
-        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
-        return datadic
+                   2: {'X': {'all': [.03,.04],
+                             'feature_a': .03,
+                             'feature_b': .04},
+                       'embeds': {'feature_c': 'c',
+                                  'feature_d': 'd'},
+                       'targets': {'feature_e': .7,
+                                   'feature_f': .8}}}        
 
+        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
+
+        print(**kwargs)
+        return datadic
+       
     
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
