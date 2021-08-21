@@ -59,21 +59,22 @@ class CDataset(Dataset, ABC):
             y = self.target_transform(y)
         
         if self.embeds:
-            embeds = self.data[i]['embeds']
-            embed_idx = self._get_embed_idx(embeds, self.embed_lookup)
+            categorical = self.data[i]['embeds']
+            embed_idx = self._get_embed_idx(categorical, self.embeds, self.embed_lookup)
         
         return X, y, embed_idx
     
     def _get_features(self, datadic, features, dtype):
         out = []
         for f in features:
-            out.append(np.reshape(np.asarray(datadic[f], -1).astype(dtype)))
+            out.append(np.reshape(np.asarray(datadic[f]), -1).astype(dtype))
         return as_tensor(np.concatenate(out))
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
         for e in embeds:
-            embed_idx.append(np.asarray(embed_lookup[e]).astype('int64'))
+            embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
+                                                                     .astype('int64'))
         return as_tensor(np.concatenate(embed_idx))
             
     def __iter__(self):
@@ -86,9 +87,23 @@ class CDataset(Dataset, ABC):
     @abstractmethod
     def load_data(self):
         """datadic with keys X, target, embeds (with or without 'features')"""
-        return {'X': {'feature': data}}
-   
+        datadic = {1: {'X': {'feature_a': .1,
+                             'feature_b': .2},
+                      'embeds': {'feature_c': 'a',
+                                  'feature_d': 'b'},
+                      'targets': {'feature_e': .3,
+                                   'feature_f': .4}},
+                   2: {'X': {'feature_a': .5,
+                             'feature_b': .6},
+                      'embeds': {'feature_c': 'c',
+                                 'feature_d': 'd'},
+                      'targets': {'feature_e': .7,
+                                  'feature_f': .8}}}
         
+        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
+        return datadic
+   
+
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
     def __add__(self, other):
