@@ -44,25 +44,32 @@ class CDataset(Dataset, ABC):
         print('CDataset created...')
     
     def __getitem__(self, i):
-        X, y, embed_idx = [], [], []
+        X, embed_idx, y = [], [], []
         
         if self.features:
             X = self.data[i]['X']
             X = self._get_features(X, self.features, dtype='float32')
-        if self.transform:
-            X = self.transform(X)
-               
-        if self.targets:
-            y = self.data[i]['targets']
-            y = self._get_features(y, self.targets, dtype='float64')
-        if self.target_transform:
-            y = self.target_transform(y)
-        
+            if self.transform: 
+                X = self.transform(X)
+                
         if self.embeds:
             categorical = self.data[i]['embeds']
             embed_idx = self._get_embed_idx(categorical, self.embeds, self.embed_lookup)
-        
-        return X, y, embed_idx
+            
+        if self.targets:
+            y = self.data[i]['targets']
+            y = self._get_features(y, self.targets, dtype='float64')
+            if self.target_transform: 
+                y = self.target_transform(y)
+            
+        return X, embed_idx, y
+            
+    def __iter__(self):
+        for i in self.ds_idx:
+            yield self.__getitem__(i)
+    
+    def __len__(self):
+        return len(self.ds_idx)
     
     def _get_features(self, datadic, features, dtype):
         out = []
@@ -76,13 +83,6 @@ class CDataset(Dataset, ABC):
             embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
                                                                      .astype('int64'))
         return as_tensor(np.concatenate(embed_idx))
-            
-    def __iter__(self):
-        for i in self.ds_idx:
-            yield self.__getitem__(i)
-    
-    def __len__(self):
-        return len(self.ds_idx)
     
     @abstractmethod
     def load_data(self):
@@ -102,8 +102,8 @@ class CDataset(Dataset, ABC):
         
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
         return datadic
-   
 
+    
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
     def __add__(self, other):
