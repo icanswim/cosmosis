@@ -216,7 +216,13 @@ class CBAM(nn.Module):
     
 class CModel(nn.Module):
     """A base class for cosmosis models
+    
     embed = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
+    'feature' = name/key of feature to be embedded
+    voc = vocabulary size (int) 
+    vec = length of the embedding vectors (int)
+    padding_idx = False/int 
+    param.requires_grad = True/False 
     """
     def __init__(self, embed=[], **kwargs):
         super().__init__()

@@ -18,47 +18,33 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    
     features/targets = ['data','keys'], None
-    
-    embed=['feature',voc,vec,padding_idx,param.requires_grad]
-        'feature' = name/key of feature to be embedded
-        voc = vocabulary size (int) (passed to CModel)
-        vec = length of the embedding vectors (passed to CModel)
-        padding_idx = False/int (passed to CModel)
-        param.requires_grad = True/False (passed to CModel)
-        
-    embed_lookup = {'label': index}
-        
-    self.ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
-    
+    embed_lookup = {'label': index}  
+    ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
+    transform/target_transform = transformer class
     """    
-    def __init__ (self, features=None, targets=None, 
-                  embeds=None, embed_lookup={}, 
+    def __init__ (self, *args, features=True, targets=True, 
+                  embeds=False, embed_lookup={}, 
                   transform=False, target_transform=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
-        self.data = self.load_data(**kwargs)
-        self.ds_idx = list(self.data.keys())
+        self.ds = self.load_data(*args, **kwargs)
         print('CDataset created...')
     
     def __getitem__(self, i):
         X, embed_idx, y = [], [], []
         
         if self.features:
-            X = self.data[i]['X']
-            X = self._get_features(X, self.features, dtype='float32')
+            X = self._get_features(self.ds[i]['X'], self.features, dtype='float32')
             if self.transform: 
                 X = self.transform(X)
-                
+        
         if self.embeds:
-            categorical = self.data[i]['embeds']
-            embed_idx = self._get_embed_idx(categorical, self.embeds, self.embed_lookup)
-            
+            embed_idx = self._get_embed_idx(self.ds[i]['embeds'], self.embeds, self.embed_lookup)
+        
         if self.targets:
-            y = self.data[i]['targets']
-            y = self._get_features(y, self.targets, dtype='float64')
+            y = self._get_features(self.ds[i]['targets'], self.targets, dtype='float64')
             if self.target_transform: 
                 y = self.target_transform(y)
             
@@ -73,30 +59,34 @@ class CDataset(Dataset, ABC):
     
     def _get_features(self, datadic, features, dtype):
         out = []
+        if features == True: 
+            features = datadic.keys()
         for f in features:
             out.append(np.reshape(np.asarray(datadic[f]), -1).astype(dtype))
         return as_tensor(np.concatenate(out))
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
+        if embeds == True: embeds = datadic.keys()
         for e in embeds:
             embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
                                                                      .astype('int64'))
         return as_tensor(np.concatenate(embed_idx))
     
     @abstractmethod
-    def load_data(self, **kwargs):
-        """Pass any keywords and return datadic with keys X, target, embeds
-        embed_lookup can be loaded or passed with class __init__ params"""
-        datadic = {1: {'X': {'all': [.01,.02],
-                             'feature_a': .01,
+    def load_data(self):
+        """Pass any keywords and return datadic with keys X, targets, embeds or
+        load your own self.ds and implement __getitem__
+        embed_lookup can be loaded or passed with class __init__ params
+        set the self.ds_idx"""
+        
+        datadic = {1: {'X': {'feature_a': .01,
                              'feature_b': .02},
                        'embeds': {'feature_c': 'a',
                                   'feature_d': 'b'},
                        'targets': {'feature_e': .3,
                                    'feature_f': .4}},
-                   2: {'X': {'all': [.03,.04],
-                             'feature_a': .03,
+                   2: {'X': {'feature_a': .03,
                              'feature_b': .04},
                        'embeds': {'feature_c': 'c',
                                   'feature_d': 'd'},
@@ -104,8 +94,8 @@ class CDataset(Dataset, ABC):
                                    'feature_f': .8}}}        
 
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
-
-        print(**kwargs)
+        self.ds_idx = datadic.keys()
+        
         return datadic
        
     
@@ -163,75 +153,48 @@ class TVDS(CDataset):
     """A wrapper for torchvision.datasets
     dataset = torchvision datasets class name str ('FakeData')
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
-    
-    subclass amd implement __getitem__ as needed
     """
-    def __init__(self, dataset='FakeData', embed=[], 
-                 tv_params={'size': 1000, 'image_size': (3,244,244),
-                            'num_classes': 10, 'transform': None,
-                            'target_transform': None}):
-        self.load_data(dataset, tv_params)
-        self.ds_idx = list(range(len(self.ds)))
-        self.embed = embed
+    def __init__(self, dataset='FakeData', 
+                       tv_params={'size': 1000, 'image_size': (3,244,244),
+                                  'num_classes': 10, 'transform': None,
+                                  'target_transform': None}):
+        super().__init__(dataset, tv_params)
         print('TVDS created...')
         
     def __getitem__(self, i):
-        
         X = self.ds[i][0]
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
-        
         y = self.ds[i][1]
         #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
         
         return X, y, []
-    
-    def __len__(self):
-        return len(self.ds)
 
     def load_data(self, dataset, tv_params):
-        ds = getattr(tvds, dataset)
-        self.ds = ds(**tv_params)
+        ds = getattr(tvds, dataset)(**tv_params)
+        self.ds_idx = range(len(ds))
+        return ds
         
         
 class SKDS(CDataset):
     """A wrapper for sklearn.datasets
+    https://scikit-learn.org/stable/datasets/sample_generators.html
     make = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
-    embed=['feature',voc,vec,padding_idx,param.requires_grad]
     
-    subclass amd implement __getitem__ or pass in tranforms or both as needed
     """    
-    def __init__(self, make='make_regression', embed=[], embed_lookup={}, 
-                 transform=None, target_transform=None, sk_params={'n_samples': 100, 
-                                                                   'n_features': 128}):
-        self.embed_lookup = embed_lookup
-        self.transform, self.target_transform = transform, target_transform
-        self.load_data(make, sk_params)
-        self.ds_idx = list(range(self.data[0].shape[0]))
-        self.embed = embed
-        print('SKDS created...')
+    def __init__(self, make='make_regression', sk_params={'n_samples': 100, 
+                                                            'n_features': 128}):
+        super().__init__(make, sk_params)
+        print('SKDS {} created...'.format(make))
         
-    def __getitem__(self, i):
-
-        X = np.reshape(self.data[0][i], -1).astype(np.float32)
-        if self.transform:
-            X = self.transform(X)
-            
-        y = np.reshape(self.data[1][i], -1).astype(np.float32)
-        if self.target_transform:
-            y = self.target_transform(y)
-        
-        embed_idx = []
-        for emb in self.embed:
-            embed_idx.append(as_tensor(
-                self.embed_lookup[self.data[2][i]]).astype(np.int64))
-        
-        return X, y, embed_idx
-    
-    def __len__(self):
-        return self.data[0].shape[0]
-
     def load_data(self, make, sk_params):
-        ds = getattr(skds, make)
-        self.data = ds(**sk_params)
+        ds = getattr(skds, make)(**sk_params)
+        datadic = {}
+        for i in range(len(ds[0])):
+            datadic[i] = {'X': {'Xs': ds[0][i-1]},
+                          'targets': {'ys': ds[1][i-1]},
+                          'embeds': None}
+        self.ds_idx = datadic.keys()
+        return datadic
+
         
