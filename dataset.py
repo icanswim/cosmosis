@@ -18,17 +18,20 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features/targets = ['data','keys'], None
+    features/targets = ['data','keys'], True/False (use features listed, all or none)
     embed_lookup = {'label': index}  
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
-    transform/target_transform = transformer class
+    transform/target_transform = [Transformer_Class()]/False
+    features/target_dtype = set with init params or with load_data
     """    
-    def __init__ (self, *args, features=True, targets=True, 
+    def __init__ (self, *args, features=True, features_dtype='float32', 
+                  targets=True, targets_dtype='float32'
                   embeds=False, embed_lookup={}, 
                   transform=False, target_transform=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
+        self.features_dtype, self.targets_type = features_dtype, targets_dtype
         self.ds = self.load_data(*args, **kwargs)
         print('CDataset created...')
     
@@ -36,7 +39,7 @@ class CDataset(Dataset, ABC):
         X, embed_idx, y = [], [], []
         
         if self.features:
-            X = self._get_features(self.ds[i]['X'], self.features, dtype='float32')
+            X = self._get_features(self.ds[i]['X'], self.features, dtype=self.features_dtype)
             if self.transform: 
                 X = self.transform(X)
         
@@ -44,7 +47,7 @@ class CDataset(Dataset, ABC):
             embed_idx = self._get_embed_idx(self.ds[i]['embeds'], self.embeds, self.embed_lookup)
         
         if self.targets:
-            y = self._get_features(self.ds[i]['targets'], self.targets, dtype='float64')
+            y = self._get_features(self.ds[i]['targets'], self.targets, dtype=self.targets_dtype)
             if self.target_transform: 
                 y = self.target_transform(y)
             
@@ -78,7 +81,8 @@ class CDataset(Dataset, ABC):
         """Pass any keywords and return datadic with keys X, targets, embeds or
         load your own self.ds and implement __getitem__
         embed_lookup can be loaded or passed with class __init__ params
-        set the self.ds_idx"""
+        set the self.ds_idx
+        set the feature_dtype and target_dtype"""
         
         datadic = {1: {'X': {'feature_a': .01,
                              'feature_b': .02},
@@ -94,7 +98,9 @@ class CDataset(Dataset, ABC):
                                    'feature_f': .8}}}        
 
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
-        self.ds_idx = datadic.keys()
+        self.features_dtype = 'float32'
+        self.targets_dtype = 'float32'
+        self.ds_idx = list(datadic.keys())
         
         return datadic
        
@@ -167,7 +173,7 @@ class TVDS(CDataset):
         y = self.ds[i][1]
         #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
         
-        return X, y, []
+        return X, [], y
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
@@ -182,9 +188,9 @@ class SKDS(CDataset):
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     
     """    
-    def __init__(self, make='make_regression', sk_params={'n_samples': 100, 
-                                                            'n_features': 128}):
-        super().__init__(make, sk_params)
+    def __init__(self, *args, make='make_regression', 
+                 sk_params={'n_samples': 100, 'n_features': 128}, **kwargs):
+        super().__init__(make, sk_params, *args, **kwargs)
         print('SKDS {} created...'.format(make))
         
     def load_data(self, make, sk_params):

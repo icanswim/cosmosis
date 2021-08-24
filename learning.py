@@ -302,12 +302,12 @@ class Learn():
             if len(data) == 0: return None
             else: return data.to('cuda:0', non_blocking=True)
 
-        for  X, y, embed in dataloader:
+        for  X, embeds, y in dataloader:
             i += self.bs
             X = to_cuda(X)
-            if len(embed) > 0:
-                embed = [to_cuda(emb) for emb in embed]
-                y_pred = self.model(X, embed)
+            if embeds:
+                embeds = [to_cuda(emb) for emb in embeds]
+                y_pred = self.model(X, embeds)
             else:
                 y_pred = self.model(X)
                 
@@ -316,6 +316,8 @@ class Learn():
             else:
                 y = to_cuda(y)
                 self.opt.zero_grad()
+                print('y_pred: ', y_pred.shape)
+                print('y: ', y.shape)
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:

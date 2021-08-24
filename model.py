@@ -227,7 +227,7 @@ class CModel(nn.Module):
     def __init__(self, embeds=[], **kwargs):
         super().__init__()
         print('CModel loaded...')
-  
+        #self.layers = nn.ModuleList(self.layers) #implement in the subclass
         self.embeddings = self.embedding_layer(embeds)
         self.weight_init()
     
@@ -248,8 +248,8 @@ class CModel(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         
-    def embedding_layer(self, embed):
-        if len(embed) == 0:
+    def embedding_layer(self, embeds):
+        if len(embeds) == 0:
             return None
         else:
             embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
@@ -259,16 +259,16 @@ class CModel(nn.Module):
                 param.requires_grad = e[4]
             return embeddings
 
-    def forward(self, X=None, embed=[]):
+    def forward(self, X=None, embeds=[]):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model. 
         
         embed = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
             ex: [[1,2,1][5]] (2 different embeded features, 3 instances and 1 instance respectively)
         X = torch tensor of concatenated continuous feature vectors"""
-        if len(embed) > 0:
+        if embeds:
             embedded = []
-            for e, emb in enumerate(embed):
+            for e, emb in enumerate(embeds):
                 out = self.embeddings[e](emb)
                 embedded.append(flatten(out, start_dim=1))
             if len(embedded) > 1:
