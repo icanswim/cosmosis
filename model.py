@@ -217,19 +217,19 @@ class CBAM(nn.Module):
 class CModel(nn.Module):
     """A base class for cosmosis models
     
-    embed = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
+    embeds = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
     'feature' = name/key of feature to be embedded
     voc = vocabulary size (int) 
     vec = length of the embedding vectors (int)
     padding_idx = False/int 
     param.requires_grad = True/False 
     """
-    def __init__(self, embed=[], **kwargs):
+    def __init__(self, embeds=[], **kwargs):
         super().__init__()
         print('CModel loaded...')
-        #self.embeddings = self.embedding_layer(embed)
-        #self.layers = nn.ModuleList()
-        #self.weight_init()
+  
+        self.embeddings = self.embedding_layer(embeds)
+        self.weight_init()
     
     def weight_init(self):
         for m in self.modules():
@@ -415,9 +415,8 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0, embed=[]):
+    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0):
         super().__init__()
-        
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
@@ -425,10 +424,8 @@ class FFNet(CModel):
             layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), dropout=config['dropout'][i]))
         layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
-        self.layers = nn.ModuleList(self.layers)  
-        self.embeddings = self.embedding_layer(embed)
-        self.weight_init()
-
+        self.layers = nn.ModuleList(self.layers)
+        
         print('FFNet model loaded...')
         
         

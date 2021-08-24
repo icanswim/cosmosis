@@ -171,7 +171,7 @@ class TVDS(CDataset):
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
-        self.ds_idx = range(len(ds))
+        self.ds_idx = list(range(len(ds)))
         return ds
         
         
@@ -194,7 +194,7 @@ class SKDS(CDataset):
             datadic[i] = {'X': {'Xs': ds[0][i-1]},
                           'targets': {'ys': ds[1][i-1]},
                           'embeds': None}
-        self.ds_idx = datadic.keys()
+        self.ds_idx = list(datadic.keys())
         return datadic
 
         

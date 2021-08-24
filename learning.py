@@ -211,24 +211,22 @@ class Learn():
         
         if load_model:
             try: #uses the same embed params for all datasets (train/val/test)
-                model = Model(embed=self.ds_params['train_params']['embed'], 
-                                                              **model_params)
+                model = Model(**model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
                 print('model loaded from pickle...')                                                      
         else:
-            model = Model(embed=self.ds_params['train_params']['embed'], 
-                                                          **model_params)
+            model = Model(**model_params)
         
         if load_embed:
             for i, embedding in enumerate(model.embeddings):
                 try:
                     weight = np.load('./models/{}_{}_embedding_weight.npy'.format(
-                                                                load_embed, i))
+                                                                            load_embed, i))
                     embedding.from_pretrained(from_numpy(weight), 
-                                              freeze=self.ds_params['train_ds']['embed'][i][4])
+                                              freeze=model_params['embeds'][i][4])
                     print('loading embedding weights...')
                 except:
                     print('no embedding weights found.  initializing... ')
