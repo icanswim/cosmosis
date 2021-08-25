@@ -292,7 +292,7 @@ class Learn():
             self.model.training = False
             dataset = self.test_ds
             drop_last = False
-               
+   
         dataloader = DataLoader(dataset, batch_size=self.bs, 
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
@@ -301,8 +301,10 @@ class Learn():
         def to_cuda(data):
             if len(data) == 0: return None
             else: return data.to('cuda:0', non_blocking=True)
-
-        for  X, embeds, y in dataloader:
+        
+        for X, embeds, y in dataloader:
+            print('X.shape: ', X.shape)
+            print('y.shape: ', y.shape)
             i += self.bs
             X = to_cuda(X)
             if embeds:
@@ -316,8 +318,6 @@ class Learn():
             else:
                 y = to_cuda(y)
                 self.opt.zero_grad()
-                print('y_pred: ', y_pred.shape)
-                print('y: ', y.shape)
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:

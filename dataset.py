@@ -22,16 +22,13 @@ class CDataset(Dataset, ABC):
     embed_lookup = {'label': index}  
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class()]/False
-    features/target_dtype = set with init params or with load_data
     """    
-    def __init__ (self, *args, features=True, features_dtype='float32', 
-                  targets=True, targets_dtype='float32'
+    def __init__ (self, *args, features=True, targets=True, 
                   embeds=False, embed_lookup={}, 
                   transform=False, target_transform=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
-        self.features_dtype, self.targets_type = features_dtype, targets_dtype
         self.ds = self.load_data(*args, **kwargs)
         print('CDataset created...')
     
@@ -39,7 +36,7 @@ class CDataset(Dataset, ABC):
         X, embed_idx, y = [], [], []
         
         if self.features:
-            X = self._get_features(self.ds[i]['X'], self.features, dtype=self.features_dtype)
+            X = self._get_features(self.ds[i]['X'], self.features)
             if self.transform: 
                 X = self.transform(X)
         
@@ -47,7 +44,7 @@ class CDataset(Dataset, ABC):
             embed_idx = self._get_embed_idx(self.ds[i]['embeds'], self.embeds, self.embed_lookup)
         
         if self.targets:
-            y = self._get_features(self.ds[i]['targets'], self.targets, dtype=self.targets_dtype)
+            y = self._get_features(self.ds[i]['targets'], self.targets)
             if self.target_transform: 
                 y = self.target_transform(y)
             
@@ -60,12 +57,12 @@ class CDataset(Dataset, ABC):
     def __len__(self):
         return len(self.ds_idx)
     
-    def _get_features(self, datadic, features, dtype):
+    def _get_features(self, datadic, features):
         out = []
         if features == True: 
             features = datadic.keys()
         for f in features:
-            out.append(np.reshape(np.asarray(datadic[f]), -1).astype(dtype))
+            out.append(np.reshape(np.asarray(datadic[f]), -1))
         return as_tensor(np.concatenate(out))
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
@@ -98,8 +95,6 @@ class CDataset(Dataset, ABC):
                                    'feature_f': .8}}}        
 
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
-        self.features_dtype = 'float32'
-        self.targets_dtype = 'float32'
         self.ds_idx = list(datadic.keys())
         
         return datadic
@@ -160,10 +155,7 @@ class TVDS(CDataset):
     dataset = torchvision datasets class name str ('FakeData')
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
     """
-    def __init__(self, dataset='FakeData', 
-                       tv_params={'size': 1000, 'image_size': (3,244,244),
-                                  'num_classes': 10, 'transform': None,
-                                  'target_transform': None}):
+    def __init__(self, dataset, tv_params):
         super().__init__(dataset, tv_params)
         print('TVDS created...')
         
@@ -172,7 +164,6 @@ class TVDS(CDataset):
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
         y = self.ds[i][1]
         #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
-        
         return X, [], y
 
     def load_data(self, dataset, tv_params):
@@ -186,21 +177,18 @@ class SKDS(CDataset):
     https://scikit-learn.org/stable/datasets/sample_generators.html
     make = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
-    
     """    
-    def __init__(self, *args, make='make_regression', 
-                 sk_params={'n_samples': 100, 'n_features': 128}, **kwargs):
-        super().__init__(make, sk_params, *args, **kwargs)
+    def __init__(self, make, sk_params, features_dtype, targets_dtype, **kwargs):
+        super().__init__(make, sk_params, features_dtype, targets_dtype)
         print('SKDS {} created...'.format(make))
         
-    def load_data(self, make, sk_params):
+    def load_data(self, make, sk_params, features_dtype, targets_dtype):              
         ds = getattr(skds, make)(**sk_params)
         datadic = {}
         for i in range(len(ds[0])):
-            datadic[i] = {'X': {'Xs': ds[0][i-1]},
-                          'targets': {'ys': ds[1][i-1]},
+            datadic[i] = {'X': {'Xs': ds[0][i-1].astype(features_dtype)},
+                          'targets': {'ys': ds[1][i-1].astype(targets_dtype)},
                           'embeds': None}
+
         self.ds_idx = list(datadic.keys())
         return datadic
-
-        
