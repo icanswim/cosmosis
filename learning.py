@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, squeeze
+from torch import no_grad, save, load, from_numpy, as_tensor, squeeze
 from torch.utils.data import Sampler, DataLoader
 from torch.nn.functional import softmax
 
@@ -87,15 +87,16 @@ class Metrics():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('train sk metric: {}, val sk metric: {}'.format(self.sk_train_log[-1], self.sk_val_log[-1]))
+            print('sklearn train metric: {}, sklearn validation metric: {}'.format(
+                                                    self.sk_train_log[-1], self.sk_val_log[-1]))
             self.report_time = datetime.now()
         
     def report(self):
         elapsed = datetime.now() - self.start            
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
-        self.log('test set sklean metric: \n{} \n'.format(self.sk_val_log[-1]))
-        print('test sklearn metric: \n{} \n'.format(self.sk_val_log[-1]))
+        self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
+        print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
         pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log),
                      columns=['train_loss','val_loss','lr','sk_metric']).to_csv(
                                             './logs/'+self.start.strftime("%Y%m%d_%H%M"))
@@ -184,21 +185,19 @@ class Learn():
         if 3 DS are given first is train second is val third is test
         
     Criterion = None implies inference mode
-    
-    TODO: accuracy
-          early stopping/checkpoints
-          inference abstraction
-          
+    TODO: early stopping/checkpoints
     load_model = False/'saved_model.pth'/'saved_model.pk'
+    squeeze_y = True/False (torch.squeeze(y))
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
                  adapt=False, load_model=False, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1):
+                 batch_size=10, epochs=1, squeeze_y=False):
         
         self.bs = batch_size
+        self.squeeze_y = squeeze_y
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         
@@ -303,12 +302,10 @@ class Learn():
             else: return data.to('cuda:0', non_blocking=True)
         
         for X, embeds, y in dataloader:
-            print('X.shape: ', X.shape)
-            print('y.shape: ', y.shape)
             i += self.bs
-            X = to_cuda(X)
+            X = to_cuda(as_tensor(X))
             if embeds:
-                embeds = [to_cuda(emb) for emb in embeds]
+                embeds = [to_cuda(as_tensor(emb)) for emb in embeds]
                 y_pred = self.model(X, embeds)
             else:
                 y_pred = self.model(X)
@@ -316,7 +313,9 @@ class Learn():
             if flag == 'infer':
                 self.metrics.predictions.append(np.concatenate((y_pred, y), axis=1))
             else:
-                y = to_cuda(y)
+                y = to_cuda(as_tensor(y))
+                if self.squeeze_y:
+                    y = squeeze(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()

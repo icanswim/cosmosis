@@ -6,7 +6,7 @@ from pandas.api.types import CategoricalDtype
 import numpy as np
 
 from torch.utils.data import Dataset, ConcatDataset
-from torch import as_tensor, cat, squeeze
+from torch import as_tensor, squeeze
 
 from torchvision import datasets as tvds
 
@@ -62,8 +62,8 @@ class CDataset(Dataset, ABC):
         if features == True: 
             features = datadic.keys()
         for f in features:
-            out.append(np.reshape(np.asarray(datadic[f]), -1))
-        return as_tensor(np.concatenate(out))
+            out.append(np.asarray(datadic[f]))
+        return np.concatenate(out)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
@@ -71,7 +71,7 @@ class CDataset(Dataset, ABC):
         for e in embeds:
             embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
                                                                      .astype('int64'))
-        return as_tensor(np.concatenate(embed_idx))
+        return np.concatenate(embed_idx)
     
     @abstractmethod
     def load_data(self):
@@ -186,8 +186,8 @@ class SKDS(CDataset):
         ds = getattr(skds, make)(**sk_params)
         datadic = {}
         for i in range(len(ds[0])):
-            datadic[i] = {'X': {'Xs': ds[0][i-1].astype(features_dtype)},
-                          'targets': {'ys': ds[1][i-1].astype(targets_dtype)},
+            datadic[i] = {'X': {'Xs': np.reshape(ds[0][i-1], -1).astype(features_dtype)},
+                          'targets': {'ys': np.reshape(ds[1][i-1], -1).astype(targets_dtype)},
                           'embeds': None}
 
         self.ds_idx = list(datadic.keys())

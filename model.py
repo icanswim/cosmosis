@@ -8,7 +8,7 @@ from torch.nn import functional as F
 import torchvision.models as torchvisionmodels
 
 
-def tv_model(model_name='resnet18', embed=[], tv_params={}, **kwargs):
+def tv_model(model_name='resnet18', embeds=[], tv_params={}, **kwargs):
 
     launcher = getattr(torchvisionmodels, model_name)
     model = launcher(**tv_params)
@@ -253,8 +253,8 @@ class CModel(nn.Module):
             return None
         else:
             embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
-                          for _, voc, vec, padding_idx, _ in embed]
-            for i, e in enumerate(embed):
+                          for _, voc, vec, padding_idx, _ in embeds]
+            for i, e in enumerate(embeds):
                 param = embeddings[i].weight
                 param.requires_grad = e[4]
             return embeddings
@@ -263,7 +263,7 @@ class CModel(nn.Module):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model. 
         
-        embed = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
+        embeds = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
             ex: [[1,2,1][5]] (2 different embeded features, 3 instances and 1 instance respectively)
         X = torch tensor of concatenated continuous feature vectors"""
         if embeds:
@@ -334,7 +334,7 @@ class ResBam(CModel):
     CBAM https://arxiv.org/abs/1807.06521v2
     """
     def __init__(self, n_classes, in_channels, groups=1, residual=False, bam=False, 
-                 dropout=[False,False,False,False,False], embed=[], act=nn.LeakyReLU):
+                 dropout=[False,False,False,False,False], embeds=[], act=nn.LeakyReLU):
         super().__init__()
         self.residual = residual
         self.bam = bam
