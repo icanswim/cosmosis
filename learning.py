@@ -304,7 +304,7 @@ class Learn():
         for X, embeds, y in dataloader:
             i += self.bs
             X = to_cuda(as_tensor(X))
-            if embeds:
+            if len(embeds) > 0:
                 embeds = [to_cuda(as_tensor(emb)) for emb in embeds]
                 y_pred = self.model(X, embeds)
             else:

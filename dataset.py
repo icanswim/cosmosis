@@ -18,14 +18,14 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features/targets = ['data','keys'], True/False (use features listed, all or none)
-    embed_lookup = {'label': index}  
+    features/targets = ['data','keys']/True (True returns all features)
+    embed_lookup = {'label': index}
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
-    transform/target_transform = [Transformer_Class()]/False
+    transform/target_transform = [Transformer_Class()]
     """    
     def __init__ (self, *args, features=True, targets=True, 
-                  embeds=False, embed_lookup={}, 
-                  transform=False, target_transform=False, **kwargs):
+                  embeds=[], embed_lookup={}, 
+                  transform=[], target_transform=[], **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
@@ -37,16 +37,16 @@ class CDataset(Dataset, ABC):
         
         if self.features:
             X = self._get_features(self.ds[i]['X'], self.features)
-            if self.transform: 
-                X = self.transform(X)
+            for transform in self.transform:
+                X = transform(X)
         
         if self.embeds:
             embed_idx = self._get_embed_idx(self.ds[i]['embeds'], self.embeds, self.embed_lookup)
         
         if self.targets:
             y = self._get_features(self.ds[i]['targets'], self.targets)
-            if self.target_transform: 
-                y = self.target_transform(y)
+            for transform in self.target_transform:
+                y = transform(y)
             
         return X, embed_idx, y
             
@@ -59,8 +59,7 @@ class CDataset(Dataset, ABC):
     
     def _get_features(self, datadic, features):
         out = []
-        if features == True: 
-            features = datadic.keys()
+        if features == True: features = datadic.keys()
         for f in features:
             out.append(np.asarray(datadic[f]))
         return np.concatenate(out)
@@ -178,7 +177,7 @@ class SKDS(CDataset):
     make = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     """    
-    def __init__(self, make, sk_params, features_dtype, targets_dtype, **kwargs):
+    def __init__(self, make, sk_params, features_dtype, targets_dtype):
         super().__init__(make, sk_params, features_dtype, targets_dtype)
         print('SKDS {} created...'.format(make))
         

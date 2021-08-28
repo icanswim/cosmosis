@@ -8,13 +8,13 @@ from torch.nn import functional as F
 import torchvision.models as torchvisionmodels
 
 
-def tv_model(model_name='resnet18', embeds=[], tv_params={}, **kwargs):
+def tv_model(model_name='resnet18', tv_params={}, in_channels=3):
 
     launcher = getattr(torchvisionmodels, model_name)
     model = launcher(**tv_params)
     
     if model_name in ['resnet18','resnet34','resnet50','wide_resnet50_2','resnext50_32x4d']:
-        model.conv1 = nn.Conv2d(in_channels=kwargs['in_channels'], out_channels=64, 
+        model.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, 
                                 kernel_size=7, stride=2, padding=3, bias=False)
         
     print('TorchVision model {} loaded...'.format(model_name))
@@ -224,11 +224,11 @@ class CModel(nn.Module):
     padding_idx = False/int 
     param.requires_grad = True/False 
     """
-    def __init__(self, embeds=[], **kwargs):
+    def __init__(self, embed_params=[]):
         super().__init__()
         print('CModel loaded...')
         #self.layers = nn.ModuleList(self.layers) #implement in the subclass
-        self.embeddings = self.embedding_layer(embeds)
+        self.embeddings = self.embedding_layer(embed_params)
         self.weight_init()
     
     def weight_init(self):
@@ -248,27 +248,27 @@ class CModel(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         
-    def embedding_layer(self, embeds):
-        if len(embeds) == 0:
+    def embedding_layer(self, embed_params):
+        if len(embed_params) == 0:
             return None
         else:
             embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
-                          for _, voc, vec, padding_idx, _ in embeds]
-            for i, e in enumerate(embeds):
+                          for _, voc, vec, padding_idx, _ in embed_params]
+            for i, e in enumerate(embed_params):
                 param = embeddings[i].weight
                 param.requires_grad = e[4]
             return embeddings
 
-    def forward(self, X=None, embeds=[]):
+    def forward(self, X=None, embed_idx=[]):
         """check for categorical and/or continuous inputs, get the embeddings and  
         concat as appropriate, feed to model. 
         
         embeds = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
             ex: [[1,2,1][5]] (2 different embeded features, 3 instances and 1 instance respectively)
         X = torch tensor of concatenated continuous feature vectors"""
-        if embeds:
+        if len(embed_idx) > 0:
             embedded = []
-            for e, emb in enumerate(embeds):
+            for e, emb in enumerate(embed):
                 out = self.embeddings[e](emb)
                 embedded.append(flatten(out, start_dim=1))
             if len(embedded) > 1:
@@ -334,7 +334,7 @@ class ResBam(CModel):
     CBAM https://arxiv.org/abs/1807.06521v2
     """
     def __init__(self, n_classes, in_channels, groups=1, residual=False, bam=False, 
-                 dropout=[False,False,False,False,False], embeds=[], act=nn.LeakyReLU):
+                 dropout=[False,False,False,False,False], act=nn.LeakyReLU):
         super().__init__()
         self.residual = residual
         self.bam = bam
@@ -415,8 +415,8 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0):
-        super().__init__()
+    def __init__(self, model_name='funnel', D_in=0, H=0, D_out=0, embed_params=[]):
+        super().__init__(embed_params)
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
