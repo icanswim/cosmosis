@@ -23,7 +23,7 @@ class CDataset(Dataset, ABC):
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class()]
     """    
-    def __init__ (self, *args, features=True, targets=True, 
+    def __init__ (self, *args, features=[], targets=[], 
                   embeds=[], embed_lookup={}, 
                   transform=[], target_transform=[], **kwargs):
         self.transform, self.target_transform = transform, target_transform
@@ -35,18 +35,18 @@ class CDataset(Dataset, ABC):
     def __getitem__(self, i):
         X, embed_idx, y = [], [], []
         
-        if self.features:
-            X = self._get_features(self.ds[i]['X'], self.features)
-            for transform in self.transform:
+        if len(self.features) > 0:
+            X = self._get_features(self.ds[i], self.features)
+        for transform in self.transform:
                 X = transform(X)
         
-        if self.embeds:
-            embed_idx = self._get_embed_idx(self.ds[i]['embeds'], self.embeds, self.embed_lookup)
+        if len(self.embeds) > 0:
+            embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
         
-        if self.targets:
-            y = self._get_features(self.ds[i]['targets'], self.targets)
-            for transform in self.target_transform:
-                y = transform(y)
+        if len(self.targets) > 0:
+            y = self._get_features(self.ds[i], self.targets)
+        for transform in self.target_transform:
+            y = transform(y)
             
         return X, embed_idx, y
             
@@ -59,14 +59,12 @@ class CDataset(Dataset, ABC):
     
     def _get_features(self, datadic, features):
         out = []
-        if features == True: features = datadic.keys()
         for f in features:
-            out.append(np.asarray(datadic[f]))
+            out.append(datadic[f])
         return np.concatenate(out)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
-        if embeds == True: embeds = datadic.keys()
         for e in embeds:
             embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
                                                                      .astype('int64'))
@@ -80,19 +78,20 @@ class CDataset(Dataset, ABC):
         set the self.ds_idx
         set the feature_dtype and target_dtype"""
         
-        datadic = {1: {'X': {'feature_a': .01,
-                             'feature_b': .02},
-                       'embeds': {'feature_c': 'a',
-                                  'feature_d': 'b'},
-                       'targets': {'feature_e': .3,
-                                   'feature_f': .4}},
-                   2: {'X': {'feature_a': .03,
-                             'feature_b': .04},
-                       'embeds': {'feature_c': 'c',
-                                  'feature_d': 'd'},
-                       'targets': {'feature_e': .7,
-                                   'feature_f': .8}}}        
-
+        datadic = {1: {'feature_1': .04,
+                       'feature_2': .02,
+                       'feature_3': 'c',
+                       'feature_4': 'b',
+                       'feature_5': 1.1},
+                   2: {'feature_1': .03,
+                       'feature_2': .01},
+                       'feature_3': 'a',
+                       'feature_4': 'd',
+                       'feature_5': 1.2}
+        
+        self.features = ['feature_1','feature_5']
+        self.targets = ['feature_2']
+        self.embeds = ['feature_3','feature_4']
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
         self.ds_idx = list(datadic.keys())
         
@@ -154,8 +153,8 @@ class TVDS(CDataset):
     dataset = torchvision datasets class name str ('FakeData')
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
     """
-    def __init__(self, dataset, tv_params):
-        super().__init__(dataset, tv_params)
+    def __init__(self, dataset, tv_params, **kwargs):
+        super().__init__(dataset, tv_params, **kwargs)
         print('TVDS created...')
         
     def __getitem__(self, i):
@@ -177,16 +176,16 @@ class SKDS(CDataset):
     make = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     """    
-    def __init__(self, make, sk_params, features_dtype, targets_dtype):
-        super().__init__(make, sk_params, features_dtype, targets_dtype)
+    def __init__(self, make, sk_params, features_dtype, targets_dtype, **kwargs):
+        super().__init__(make, sk_params, features_dtype, targets_dtype, **kwargs)
         print('SKDS {} created...'.format(make))
         
     def load_data(self, make, sk_params, features_dtype, targets_dtype):              
         ds = getattr(skds, make)(**sk_params)
         datadic = {}
         for i in range(len(ds[0])):
-            datadic[i] = {'X': {'Xs': np.reshape(ds[0][i-1], -1).astype(features_dtype)},
-                          'targets': {'ys': np.reshape(ds[1][i-1], -1).astype(targets_dtype)},
+            datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
+                          'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype),
                           'embeds': None}
 
         self.ds_idx = list(datadic.keys())
