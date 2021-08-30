@@ -23,18 +23,17 @@ class CDataset(Dataset, ABC):
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class()]
     """    
-    def __init__ (self, *args, features=[], targets=[], 
-                  embeds=[], embed_lookup={}, 
-                  transform=[], target_transform=[], **kwargs):
+    def __init__ (self, features=[], targets=[], embeds=[], embed_lookup={}, 
+                          transform=[], target_transform=[], **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
-        self.ds = self.load_data(*args, **kwargs)
+        self.ds = self.load_data(**kwargs)
         print('CDataset created...')
     
     def __getitem__(self, i):
         X, embed_idx, y = [], [], []
-        
+    
         if len(self.features) > 0:
             X = self._get_features(self.ds[i], self.features)
         for transform in self.transform:
@@ -89,9 +88,6 @@ class CDataset(Dataset, ABC):
                        'feature_4': 'd',
                        'feature_5': 1.2}
         
-        self.features = ['feature_1','feature_5']
-        self.targets = ['feature_2']
-        self.embeds = ['feature_3','feature_4']
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
         self.ds_idx = list(datadic.keys())
         
@@ -153,8 +149,8 @@ class TVDS(CDataset):
     dataset = torchvision datasets class name str ('FakeData')
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
     """
-    def __init__(self, dataset, tv_params, **kwargs):
-        super().__init__(dataset, tv_params, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         print('TVDS created...')
         
     def __getitem__(self, i):
@@ -176,9 +172,9 @@ class SKDS(CDataset):
     make = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     """    
-    def __init__(self, make, sk_params, features_dtype, targets_dtype, **kwargs):
-        super().__init__(make, sk_params, features_dtype, targets_dtype, **kwargs)
-        print('SKDS {} created...'.format(make))
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        print('SKDS {} created...'.format(kwargs['make']))
         
     def load_data(self, make, sk_params, features_dtype, targets_dtype):              
         ds = getattr(skds, make)(**sk_params)
