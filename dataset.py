@@ -65,9 +65,11 @@ class CDataset(Dataset, ABC):
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
         for e in embeds:
-            embed_idx.append(np.reshape(np.asarray(embed_lookup[datadic[e]]), -1)
-                                                                     .astype('int64'))
-        return np.concatenate(embed_idx)
+            idx = []
+            for i in datadic[e]:
+                idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
+            embed_idx.append(np.concatenate(idx))
+        return embed_idx
     
     @abstractmethod
     def load_data(self):
