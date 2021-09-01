@@ -264,15 +264,16 @@ class CModel(nn.Module):
         concat as appropriate, feed to model. 
         
         embeds = a list of torch.cuda tensor int64 indices to be fed to the embedding layer
-            ex: [[1,2,1][5]] (2 different embeded features, 3 instances and 1 instance respectively)
-        X = torch tensor of concatenated continuous feature vectors"""
+            ex: [[1,2,1],[5]] (2 different embeded features, 3 instances and 1 instance respectively)
+        X = torch tensor of concatenated continuous feature vectors
+        """
         if len(embed_idx) > 0:
             embedded = []
-            for e, emb in enumerate(embed):
-                out = self.embeddings[e](emb)
+            for e, idx in enumerate(embed_idx):
+                out = self.embeddings[e](idx)
                 embedded.append(flatten(out, start_dim=1))
             if len(embedded) > 1:
-                embedded = cat(emb, dim=1)    
+                embedded = cat(emb, dim=1)
             if X is not None:
                 X = cat([X, *embedded], dim=1)
             else:  

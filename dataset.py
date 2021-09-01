@@ -66,8 +66,8 @@ class CDataset(Dataset, ABC):
         embed_idx = []
         for e in embeds:
             idx = []
-            for i in datadic[e]:
-                idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
+            for token in datadic[e]:
+                idx.append(np.reshape(np.asarray(embed_lookup[token]), -1).astype('int64'))
             embed_idx.append(np.concatenate(idx))
         return embed_idx
     
@@ -79,16 +79,16 @@ class CDataset(Dataset, ABC):
         set the self.ds_idx
         set the feature_dtype and target_dtype"""
         
-        datadic = {1: {'feature_1': .04,
-                       'feature_2': .02,
-                       'feature_3': 'c',
-                       'feature_4': 'b',
-                       'feature_5': 1.1},
-                   2: {'feature_1': .03,
-                       'feature_2': .01},
-                       'feature_3': 'a',
-                       'feature_4': 'd',
-                       'feature_5': 1.2}
+        datadic = {1: {'feature_1': np.asarray([.04]),
+                       'feature_2': np.asarray([.02]),
+                       'feature_3': ['c'],
+                       'feature_4': ['b','a'],
+                       'feature_5': np.asarray([1.1])},
+                   2: {'feature_1': np.asarray([.03]),
+                       'feature_2': np.asarray([.01]),
+                       'feature_3': ['a','b','d'],
+                       'feature_4': ['d'],
+                       'feature_5': np.asarray([1.2])}}
         
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
         self.ds_idx = list(datadic.keys())
