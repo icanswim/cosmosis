@@ -70,7 +70,7 @@ class CDataset(Dataset, ABC):
                 idx.append(np.reshape(np.asarray(embed_lookup[token]), -1).astype('int64'))
             embed_idx.append(np.concatenate(idx))
         return embed_idx
-    
+        
     @abstractmethod
     def load_data(self):
         """Pass any keywords and return datadic with keys X, targets, embeds or
@@ -81,13 +81,13 @@ class CDataset(Dataset, ABC):
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
-                       'feature_3': ['c'],
-                       'feature_4': ['b','a'],
+                       'feature_3': ['b'],
+                       'feature_4': ['c','c','d'],
                        'feature_5': np.asarray([1.1])},
                    2: {'feature_1': np.asarray([.03]),
                        'feature_2': np.asarray([.01]),
-                       'feature_3': ['a','b','d'],
-                       'feature_4': ['d'],
+                       'feature_3': ['a'],
+                       'feature_4': ['d','d','d'],
                        'feature_5': np.asarray([1.2])}}
         
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
