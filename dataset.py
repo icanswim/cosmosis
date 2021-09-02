@@ -29,6 +29,7 @@ class CDataset(Dataset, ABC):
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
         self.ds = self.load_data(**kwargs)
+        self.ds_idx = list(self.ds.keys())
         print('CDataset created...')
     
     def __getitem__(self, i):
@@ -153,6 +154,7 @@ class TVDS(CDataset):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.ds_idx = list(range(len(ds)))
         print('TVDS created...')
         
     def __getitem__(self, i):
@@ -164,7 +166,6 @@ class TVDS(CDataset):
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
-        self.ds_idx = list(range(len(ds)))
         return ds
         
         
@@ -186,5 +187,4 @@ class SKDS(CDataset):
                           'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype),
                           'embeds': None}
 
-        self.ds_idx = list(datadic.keys())
         return datadic
