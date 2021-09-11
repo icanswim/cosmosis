@@ -18,18 +18,22 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features/targets = ['data','keys']/True (True returns all features)
+    features = ['data','keys']
     embed_lookup = {'label': index}
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
-    transform/target_transform = [Transformer_Class()]
+    transform/target_transform = [Transformer_Class(),...]
     """    
     def __init__ (self, features=[], targets=[], embeds=[], embed_lookup={}, 
-                          transform=[], target_transform=[], **kwargs):
+                  transform=[], target_transform=[], pad=None, flatten=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
+        self.pad, self.flatten = pad, flatten
         self.ds = self.load_data(**kwargs)
-        self.ds_idx = list(self.ds.keys())
+        try: 
+            self.ds_idx = list(self.ds.keys())
+        except: 
+            pass
         print('CDataset created...')
     
     def __getitem__(self, i):
@@ -58,27 +62,30 @@ class CDataset(Dataset, ABC):
         return len(self.ds_idx)
     
     def _get_features(self, datadic, features):
-        out = []
+        data = []
         for f in features:
-            out.append(datadic[f])
-        return np.concatenate(out)
+            out = datadic[f]
+            if self.pad is not None:
+                out = np.pad(out, (0, (self.pad - out.shape[0])))
+            if self.flatten:
+                out = np.reshape(out, -1)  
+            data.append(out)
+        return np.concatenate(data)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         embed_idx = []
         for e in embeds:
+            out = datadic[e]
             idx = []
-            for token in datadic[e]:
-                idx.append(np.reshape(np.asarray(embed_lookup[token]), -1).astype('int64'))
+            if self.pad is not None:
+                out = np.pad(out, (0, (self.pad - out.shape[0])))
+            for i in np.reshape(out, -1).tolist():
+                idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
             embed_idx.append(np.concatenate(idx))
         return embed_idx
         
     @abstractmethod
     def load_data(self):
-        """Pass any keywords and return datadic with keys X, targets, embeds or
-        load your own self.ds and implement __getitem__
-        embed_lookup can be loaded or passed with class __init__ params
-        set the self.ds_idx
-        set the feature_dtype and target_dtype"""
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
@@ -92,8 +99,6 @@ class CDataset(Dataset, ABC):
                        'feature_5': np.asarray([1.2])}}
         
         self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
-        self.ds_idx = list(datadic.keys())
-        
         return datadic
        
     
@@ -154,7 +159,7 @@ class TVDS(CDataset):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.ds_idx = list(range(len(ds)))
+        self.ds_idx = list(range(len(self.ds)))
         print('TVDS created...')
         
     def __getitem__(self, i):
