@@ -24,11 +24,13 @@ class CDataset(Dataset, ABC):
     transform/target_transform = [Transformer_Class(),...]
     """    
     def __init__ (self, features=[], targets=[], embeds=[], embed_lookup={}, 
-                  transform=[], target_transform=[], pad=None, flatten=False, **kwargs):
+                  transform=[], target_transform=[], pad=None, flatten=False, 
+                  do_not_pad=[None], **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
-        self.pad, self.flatten = pad, flatten
+        self.pad, self.do_not_pad = pad, do_not_pad
+        self.flatten = flatten
         self.ds = self.load_data(**kwargs)
         try: 
             self.ds_idx = list(self.ds.keys())
@@ -66,22 +68,35 @@ class CDataset(Dataset, ABC):
         for f in features:
             out = datadic[f]
             if self.pad is not None:
-                out = np.pad(out, (0, (self.pad - out.shape[0])))
+                if f not in self.do_not_pad:
+                    out = np.pad(out, (0, (self.pad - out.shape[0])))
             if self.flatten:
                 out = np.reshape(out, -1)  
             data.append(out)
         return np.concatenate(data)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
+        """convert a list of 1 or more categorical features to an array of ints which can then
+        be fed to an embedding layer
+        datadic = {'feature_name': 'feature'}
+        embeds = ['feature_name','feature_name']
+        embed_lookup = {'feature_name': int, '0': 0} 
+            dont forget an embedding for the padding (padding_idx)
+        do_not_pad = ['feature_name']
+        """
         embed_idx = []
         for e in embeds:
             out = datadic[e]
-            idx = []
+            
             if self.pad is not None:
-                out = np.pad(out, (0, (self.pad - out.shape[0])))
+                if e not in self.do_not_pad:
+                    out = np.pad(out, (0, (self.pad - out.shape[0])))
+                    
+            idx = []        
             for i in np.reshape(out, -1).tolist():
                 idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
             embed_idx.append(np.concatenate(idx))
+            
         return embed_idx
         
     @abstractmethod
@@ -89,16 +104,17 @@ class CDataset(Dataset, ABC):
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
-                       'feature_3': ['b'],
-                       'feature_4': ['c','c','d'],
+                       'feature_3': np.asarray(['b']),
+                       'feature_4': np.asarray(['c','c','d']),
                        'feature_5': np.asarray([1.1])},
                    2: {'feature_1': np.asarray([.03]),
                        'feature_2': np.asarray([.01]),
-                       'feature_3': ['a'],
-                       'feature_4': ['d','d','d'],
+                       'feature_3': np.asarray(['a']),
+                       'feature_4': np.asarray(['d','d','d']),
                        'feature_5': np.asarray([1.2])}}
         
-        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4}
+        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0}
+        #dont forget an embedding for the padding '0' (padding_idx)
         return datadic
        
     
