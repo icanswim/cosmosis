@@ -184,7 +184,7 @@ class TVDS(CDataset):
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
         y = self.ds[i][1]
         #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
-        return X, None, y
+        return X, [], y
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
