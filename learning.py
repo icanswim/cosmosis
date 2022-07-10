@@ -187,16 +187,19 @@ class Learn():
         
     Criterion = None implies inference mode
     TODO: early stopping/checkpoints
-    load_model = False/'saved_model.pth'/'saved_model.pk'
+    load_model = None/'saved_model.pth'/'saved_model.pk'
+    load_embed = None/'model_name'
     squeeze_y = True/False (torch.squeeze(y))
+    adapt = (D_in, D_out, Activation, dropout rate)
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
-                 adapt=False, load_model=False, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, squeeze_y=False):
+                 adapt=None, load_model=None, load_embed=None, save_model=False,
+                 batch_size=10, epochs=1, squeeze_y=False, gpu=True):
         
+        self.gpu = gpu
         self.bs = batch_size
         self.squeeze_y = squeeze_y
         self.ds_params = ds_params
@@ -209,18 +212,18 @@ class Learn():
         self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                     epochs, batch_size, save_model, load_model))
         
-        if load_model:
+        if load_model is not None:
             try: #uses the same embed params for all datasets (train/val/test)
-                model = Model(**model_params)
+                model = Model(model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
             except:
                 model = load('./models/'+load_model)
                 print('model loaded from pickle...')                                                      
         else:
-            model = Model(**model_params)
+            model = Model(model_params)
         
-        if load_embed:
+        if load_embed is not None:
             for i, embedding in enumerate(model.embeddings):
                 try:
                     weight = np.load('./models/{}_{}_embedding_weight.npy'.format(
@@ -231,13 +234,26 @@ class Learn():
                 except:
                     print('no embedding weights found.  initializing... ')
                     
-        if adapt: 
+        if adapt is not None: 
             model.adapt(adapt)
-        self.model = model.to('cuda:0')
+        
+        if self.gpu:
+            try:
+                self.model = model.to('cuda:0')
+                print('running model on gpu...')
+            except:
+                print('gpu not available.  running model on cpu...')
+                self.model = model
+                self.gpu = False
+        else:
+            print('running model on cpu...')
+            self.model = model
+            
         self.metrics.log(self.model.children)
         
         if Criterion:
-            self.criterion = Criterion(**crit_params).to('cuda:0')
+            self.criterion = Criterion(**crit_params)
+            if self.gpu: self.criterion.to('cuda:0')
             self.metrics.log('criterion: {}\n{}'.format(self.criterion, crit_params))
             self.opt = Optimizer(self.model.parameters(), **opt_params)
             self.metrics.log('optimizer: {}\n{}'.format(self.opt, opt_params))
@@ -292,15 +308,17 @@ class Learn():
             self.model.training = False
             dataset = self.test_ds
             drop_last = False
-   
+            
+        #dataset = dataset.to('cuda:0', non_blocking=True)
         dataloader = DataLoader(dataset, batch_size=self.bs, 
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
                                             drop_last=drop_last)
-
+        
         def to_cuda(data):
-            if len(data) == 0: return None
-            else: return data.to('cuda:0', non_blocking=True)
+            if len(data) < 1: return None
+            elif not self.gpu: return data
+            else: return data.to('cuda:0', non_blocking=True) 
         
         for X, embeds, y in dataloader:
             i += self.bs

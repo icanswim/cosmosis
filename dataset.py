@@ -18,7 +18,8 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features = ['data','keys']
+    features = ['featurename',...]
+    embeds = ['featurename',...]
     embed_lookup = {'label': index}
     ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class(),...]
@@ -183,7 +184,7 @@ class TVDS(CDataset):
         #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
         y = self.ds[i][1]
         #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
-        return X, [], y
+        return X, None, y
 
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
