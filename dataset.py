@@ -20,42 +20,56 @@ class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
     features = ['featurename',...]
     embeds = ['featurename',...]
+    targets = ['featurename',...]
     embed_lookup = {'label': index}
-    ds_idx = list of indices or keys to be passed to the Sampler and Dataloader
+    ds_idx = [1,2,3,...]  
+        a list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class(),...]
+    pad = int/False  
+        each feature will be padded to this length
+    do_not_pad = ['featurename',...]  
+        these features will not be padded
     """    
     def __init__ (self, features=[], targets=[], embeds=[], embed_lookup={}, 
                   transform=[], target_transform=[], pad=None, flatten=False, 
-                  do_not_pad=[None], **kwargs):
+                  do_not_pad=[None], as_dict=False, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
         self.features, self.targets = features, targets
         self.pad, self.do_not_pad = pad, do_not_pad
-        self.flatten = flatten
+        self.flatten, self.as_dict = flatten, as_dict
         self.ds = self.load_data(**kwargs)
         try: 
             self.ds_idx = list(self.ds.keys())
         except: 
-            pass
+            continue
         print('CDataset created...')
     
     def __getitem__(self, i):
         X, embed_idx, y = [], [], []
-    
+
         if len(self.features) > 0:
             X = self._get_features(self.ds[i], self.features)
-        for transform in self.transform:
+            for transform in self.transform:
                 X = transform(X)
         
         if len(self.embeds) > 0:
             embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
+
         
         if len(self.targets) > 0:
             y = self._get_features(self.ds[i], self.targets)
-        for transform in self.target_transform:
-            y = transform(y)
-            
-        return X, embed_idx, y
+            for transform in self.target_transform:
+                y = transform(y)
+
+        if self.as_dict:
+            datadict = {}
+            datadict['X'] = X
+            datadict['embed_idx'] = embed_idx
+            datadict['y'] = y
+            return datadict
+        else:
+            return X, embed_idx, y
             
     def __iter__(self):
         for i in self.ds_idx:

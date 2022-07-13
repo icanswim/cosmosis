@@ -309,11 +309,10 @@ class Learn():
             dataset = self.test_ds
             drop_last = False
             
-        #dataset = dataset.to('cuda:0', non_blocking=True)
         dataloader = DataLoader(dataset, batch_size=self.bs, 
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
-                                            drop_last=drop_last)
+                                drop_last=drop_last)
         
         def to_cuda(data):
             if len(data) < 1: return None
