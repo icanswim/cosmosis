@@ -29,14 +29,7 @@ def logsumexp_2d(tensor):
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
-
-
-class SModel():
-    """A base class for cosmosis sklearn models
-    """
-    def __init__(self):
-        pass
-
+    
     
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
@@ -50,7 +43,8 @@ class CModel(nn.Module):
     """
     def __init__(self, model_params):
         super().__init__()
-        self.embeddings = self.embedding_layer(model_params['embed_params'])
+        if 'embed_params' in model_params:
+            self.embeddings = self.embedding_layer(model_params['embed_params'])
         self.build(**model_params)
         self.layers = nn.ModuleList(self.layers) 
         self.weight_init()
@@ -78,13 +72,12 @@ class CModel(nn.Module):
                 nn.init.constant_(m.bias, 0)
         
     def embedding_layer(self, embed_params):
-        if embed_params is not None:
-            embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
-                          for _, voc, vec, padding_idx, _ in embed_params]
-            for i, e in enumerate(embed_params):
-                param = embeddings[i].weight
-                param.requires_grad = e[4]
-            return embeddings
+        embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
+                      for _, voc, vec, padding_idx, _ in embed_params]
+        for i, e in enumerate(embed_params):
+            param = embeddings[i].weight
+            param.requires_grad = e[4]
+        return embeddings
 
     def forward(self, X=None, embed_idx=None):
         """X = torch tensor of concatenated continuous feature vectors
@@ -108,10 +101,10 @@ class CModel(nn.Module):
             
         return X
     
-    def adapt(self, D_in, D_out, activation=nn.SELU, dropout=.2):
-        """prepends a trainable adaptor feedforward layer
+    def adapt(self, D_in, D_out, dropout):
+        """prepends a trainable feedforward layer
         """
-        for l in self.ffunit(D_in, D_out, activation=activation, dropout=dropout)[::-1]:
+        for l in self.ff_unit(D_in, D_out, activation=None, dropout=dropout)[::-1]:
             self.layers.insert(0, l)
             
     def ff_unit(self, D_in, D_out, activation=nn.SELU, dropout=.2):
@@ -138,7 +131,14 @@ class CModel(nn.Module):
                         
         return nn.Sequential(*conv)
     
-    
+
+class SModel(CModel):
+    """A base class for cosmosis sklearn models
+    """
+    def __init__(self):
+        pass
+
+      
 class FFNet(CModel):
     model_config = {}
     model_config['simple'] = {'shape': [('D_in',1),(1,1),(1,1/2),(1/2,'D_out')], 

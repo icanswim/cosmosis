@@ -18,11 +18,13 @@ from sklearn import metrics
 
 class Metrics():
     #TODO checkpointing and early stopping
-    def __init__(self, report_interval=10, sk_metric_name=None, sk_params={}):
+    def __init__(self, report_interval=10, sk_metric_name=None, 
+                     log_plot=False, sk_params={}):
         
         self.start = datetime.now()
         self.report_time = self.start
         self.report_interval = report_interval
+        self.log_plot = log_plot
         
         self.epoch, self.e_loss, self.predictions = 0, [], []
         self.train_loss, self.val_loss, self.lr_log = [], [], []
@@ -48,26 +50,23 @@ class Metrics():
         print('inference complete and saved to csv...')
 
     def sk_metric(self, flag):
-        if self.skm is not None:
-            def softmax(x):
-                return np.exp(x)/sum(np.exp(x))
-            y = np.reshape(np.vstack(np.asarray(self.sk_y, 'float64')), -1)
-            y_pred = np.vstack(np.asarray(self.sk_pred, 'float64'))
-            
-            if self.sk_metric_name == 'roc_auc_score':
-                y_pred = np.apply_along_axis(softmax, 1, y_pred)
-                
-            score = self.skm(y, y_pred, **self.sk_params)
-            
-            if flag == 'train':
-                self.sk_train_log.append(score)
-            else:
-                self.sk_val_log.append(score)
 
-            self.sk_y, self.sk_pred = [], []
-        else: 
-            self.sk_train_log.append(0)
-            self.sk_val_log.append(0)
+        def softmax(x): return np.exp(x)/sum(np.exp(x))
+    
+        y = np.reshape(np.vstack(np.asarray(self.sk_y, 'float64')), -1)
+        y_pred = np.vstack(np.asarray(self.sk_pred, 'float64'))
+
+        if self.sk_metric_name == 'roc_auc_score':
+            y_pred = np.apply_along_axis(softmax, 1, y_pred)
+
+        score = self.skm(y, y_pred, **self.sk_params)
+
+        if flag == 'train':
+            self.sk_train_log.append(score)
+        else:
+            self.sk_val_log.append(score)
+
+        self.sk_y, self.sk_pred = [], []
         
     def loss(self, flag, loss):
         if flag == 'train':
@@ -87,25 +86,31 @@ class Metrics():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('sklearn train metric: {}, sklearn validation metric: {}'.format(
+            if self.skm is not None:
+                print('sklearn train metric: {}, sklearn validation metric: {}'.format(
                                                     self.sk_train_log[-1], self.sk_val_log[-1]))
             self.report_time = datetime.now()
         
     def report(self):
-        elapsed = datetime.now() - self.start            
+        elapsed = datetime.now() - self.start
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
-        self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
-        print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
-        pd.DataFrame(zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log),
-                     columns=['train_loss','val_loss','lr','sk_metric']).to_csv(
-                                            './logs/'+self.start.strftime("%Y%m%d_%H%M"))
-        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'))
+        if self.skm is not None:
+            self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
+            print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
+            logs = zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log)
+            cols = ['train_loss','val_loss','lr','sk_metric']
+        else:
+            logs = zip(self.train_loss, self.val_loss, self.lr_log)
+            cols = ['train_loss','val_loss','lr']
+            
+        pd.DataFrame(logs, columns=cols).to_csv('./logs/'+self.start.strftime("%Y%m%d_%H%M"))
+        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'), self.log_plot)
         
     @classmethod    
-    def view_log(cls, log_file):
+    def view_log(cls, log_file, log_plot):
         log = pd.read_csv(log_file)
-        log.iloc[:,1:5].plot(logy=True)
+        log.iloc[:,1:5].plot(logy=log_plot)
         plt.show() 
 
 
@@ -190,7 +195,7 @@ class Learn():
     load_model = None/'saved_model.pth'/'saved_model.pk'
     load_embed = None/'model_name'
     squeeze_y = True/False (torch.squeeze(y))
-    adapt = (D_in, D_out, Activation, dropout rate)
+    adapt = (D_in, D_out, dropout)
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  Optimizer=None, Scheduler=None, Criterion=None, 
@@ -235,7 +240,7 @@ class Learn():
                     print('no embedding weights found.  initializing... ')
                     
         if adapt is not None: 
-            model.adapt(adapt)
+            model.adapt(*adapt)
         
         if self.gpu:
             try:
@@ -277,7 +282,7 @@ class Learn():
         if save_model:
             if adapt: save(self.model, './models/{}.pth'.format(
                             self.metrics.start.strftime("%Y%m%d_%H%M")))
-            if not adapt: save(self.model.state_dict(), './models/{}.pth'.format(
+            else: save(self.model.state_dict(), './models/{}.pth'.format(
                                          self.metrics.start.strftime("%Y%m%d_%H%M")))
             if hasattr(self.model, 'embeddings'):
                 for i, embedding in enumerate(self.model.embeddings):
@@ -348,7 +353,7 @@ class Learn():
             self.metrics.infer()
         else:
             self.metrics.loss(flag, e_loss/i)
-            self.metrics.sk_metric(flag)
+            if self.metrics.skm is not None: self.metrics.sk_metric(flag)
             
         if flag == 'val': 
             self.scheduler.step(e_loss/i)

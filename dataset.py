@@ -42,7 +42,7 @@ class CDataset(Dataset, ABC):
         try: 
             self.ds_idx = list(self.ds.keys())
         except: 
-            continue
+            pass
         print('CDataset created...')
     
     def __getitem__(self, i):
