@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, as_tensor, squeeze
+from torch import no_grad, save, load, from_numpy, squeeze
 from torch.utils.data import Sampler, DataLoader
 from torch.nn.functional import softmax
 
@@ -239,8 +239,7 @@ class Learn():
                 except:
                     print('no embedding weights found.  initializing... ')
                     
-        if adapt is not None: 
-            model.adapt(*adapt)
+        if adapt is not None: model.adapt(*adapt)
         
         if self.gpu:
             try:
@@ -291,7 +290,9 @@ class Learn():
                         self.metrics.start.strftime("%Y%m%d_%H%M"), i), weight)
         self.metrics.report()
         
+        
     def run(self, flag): 
+        #question: does passing the datadic around create copies?
         e_loss, e_sk, i = 0, 0, 0
         
         if flag == 'train': 
@@ -313,37 +314,31 @@ class Learn():
             self.model.training = False
             dataset = self.test_ds
             drop_last = False
-            
+        
         dataloader = DataLoader(dataset, batch_size=self.bs, 
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
                                 drop_last=drop_last)
-        
-        def to_cuda(data):
-            if len(data) < 1: return None
-            elif not self.gpu: return data
-            else: return data.to('cuda:0', non_blocking=True) 
-        
-        for X, embeds, y in dataloader:
+    
+        for data in dataloader:
             i += self.bs
-            X = to_cuda(as_tensor(X))
-            if len(embeds) > 0:
-                embeds = [to_cuda(as_tensor(emb)) for emb in embeds]
-                y_pred = self.model(X, embeds)
-            else:
-                y_pred = self.model(X)
+            if self.gpu:
+                _data = {}
+                for d in data:
+                    _data[d] = data[d].to('cuda:0', non_blocking=True)
+                data = _data
+                        
+            y_pred = self.model(data)
                 
             if flag == 'infer':
-                self.metrics.predictions.append(np.concatenate((y_pred, y), axis=1))
+                self.metrics.predictions.append(np.concatenate((y_pred, data['y']), axis=1))
             else:
-                y = to_cuda(as_tensor(y))
-                if self.squeeze_y:
-                    y = squeeze(y)
+                if self.squeeze_y: y = squeeze(data['y'])
                 self.opt.zero_grad()
-                b_loss = self.criterion(y_pred, y)
+                b_loss = self.criterion(y_pred, data['y'])
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:
-                    self.metrics.sk_y.append(y.detach().cpu().numpy())
+                    self.metrics.sk_y.append(data['y'].detach().cpu().numpy())
                     self.metrics.sk_pred.append(y_pred.detach().cpu().numpy())
                 if flag == 'train':
                     b_loss.backward()
@@ -360,7 +355,7 @@ class Learn():
             self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
             self.metrics.status_report()
         
-            
+        
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
         if len(Datasets) == 1:

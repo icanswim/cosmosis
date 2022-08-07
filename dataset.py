@@ -30,14 +30,15 @@ class CDataset(Dataset, ABC):
     do_not_pad = ['featurename',...]  
         these features will not be padded
     """    
-    def __init__ (self, features=[], targets=[], embeds=[], embed_lookup={}, 
-                  transform=[], target_transform=[], pad=None, flatten=False, 
-                  do_not_pad=[None], as_dict=False, **kwargs):
+    def __init__ (self, features=[], targets=[], aux=[], embeds=[], 
+                  embed_lookup={}, transform=[], target_transform=[], 
+                  pad=None, flatten=False, do_not_pad=[None], 
+                  as_tensor=True, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
-        self.features, self.targets = features, targets
+        self.features, self.targets, self.aux = features, targets, aux
         self.pad, self.do_not_pad = pad, do_not_pad
-        self.flatten, self.as_dict = flatten, as_dict
+        self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)
         try: 
             self.ds_idx = list(self.ds.keys())
@@ -46,30 +47,29 @@ class CDataset(Dataset, ABC):
         print('CDataset created...')
     
     def __getitem__(self, i):
-        X, embed_idx, y = [], [], []
-
+        datadict = {}
         if len(self.features) > 0:
             X = self._get_features(self.ds[i], self.features)
             for transform in self.transform:
                 X = transform(X)
-        
+            datadict['X'] = X
+            
         if len(self.embeds) > 0:
             embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
-
+            datadict['embed_idx'] = embed_idx
         
         if len(self.targets) > 0:
             y = self._get_features(self.ds[i], self.targets)
             for transform in self.target_transform:
                 y = transform(y)
-
-        if self.as_dict:
-            datadict = {}
-            datadict['X'] = X
-            datadict['embed_idx'] = embed_idx
             datadict['y'] = y
-            return datadict
-        else:
-            return X, embed_idx, y
+            
+        if len(self.aux) > 0:
+            aux = self._get_features(self.ds[i], self.aux)
+            datadic['aux'] = aux
+            
+        return datadict
+
             
     def __iter__(self):
         for i in self.ds_idx:
@@ -85,10 +85,12 @@ class CDataset(Dataset, ABC):
             if self.pad is not None:
                 if f not in self.do_not_pad:
                     out = np.pad(out, (0, (self.pad - out.shape[0])))
-            if self.flatten:
-                out = np.reshape(out, -1)  
+            if self.flatten: out = np.reshape(out, -1)  
             data.append(out)
-        return np.concatenate(data)
+        data = np.concatenate(data)
+        if self.as_tensor: data = as_tensor(data)
+        
+        return data
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         """convert a list of 1 or more categorical features to an array of ints which can then
@@ -110,12 +112,14 @@ class CDataset(Dataset, ABC):
             idx = []        
             for i in np.reshape(out, -1).tolist():
                 idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
-            embed_idx.append(np.concatenate(idx))
+            idx = np.concatenate(idx)
+            if self.as_tensor:  as_tensor(idx)
+            embed_idx.append(idx)
             
         return embed_idx
-        
+    
     @abstractmethod
-    def load_data(self):
+    def load_data(self, kwargs):
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
@@ -220,7 +224,6 @@ class SKDS(CDataset):
         datadic = {}
         for i in range(len(ds[0])):
             datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
-                          'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype),
-                          'embeds': None}
+                          'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype)}
 
         return datadic

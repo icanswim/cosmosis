@@ -34,7 +34,7 @@ class Flatten(nn.Module):
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
     
-    embed_params = [('feature',n_vocab,len_vec,padding_idx,param.requires_grad),...]
+    embed_params = [('feature', voc, vec, padding_idx, param.requires_grad),...]
         'feature' = name/key of feature to be embedded
         voc = vocabulary size (int) 
         vec = length of the embedding vectors (int)
@@ -50,7 +50,7 @@ class CModel(nn.Module):
         self.weight_init()
         print('CModel loaded...')
                             
-    def build(self, **kwargs):
+    def build(self, **model_params):
         self.layers = []
         raise NotImplementedError('subclass and implement build()...')
         
@@ -79,20 +79,24 @@ class CModel(nn.Module):
             param.requires_grad = e[4]
         return embeddings
 
-    def forward(self, X=None, embed_idx=None):
-        """X = torch tensor of concatenated continuous feature vectors
-        embed_idx = a list of lists (one for each feature type) of torch.cuda tensor int64 
+    def forward(self, data):
+        """data = {}
+        X = torch tensor of concatenated continuous feature vectors
+        embed_idx = a list of lists (one for each feature) of torch.cuda tensor int64 
         indices (keys) to be fed to the embedding layer)
         """
-        if embed_idx is not None:
+        if 'X' in data: 
+            X = data['X']
+            
+        if 'embed_idx' in data:
             embedded = []
-            for e, idx in enumerate(embed_idx): 
+            for e, idx in enumerate(data['embed_idx']): 
                 out = self.embeddings[e](idx)
                 embedded.append(flatten(out, start_dim=1))
             if len(embedded) > 1:
                 embedded = cat(embedded, dim=1)
-            if X is not None:
-                X = cat([X, *embedded], dim=1)
+            if 'X' in data:
+                X = cat([data['X'], *embedded], dim=1)
             else:  
                 X = embedded 
                 
@@ -133,7 +137,7 @@ class CModel(nn.Module):
     
 
 class SModel(CModel):
-    """A base class for cosmosis sklearn models
+    """TODO:  A base class wrapper for cosmosis sklearn models
     """
     def __init__(self):
         pass
@@ -146,7 +150,7 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def build(self, model_name='funnel', D_in=0, H=0, D_out=0, **kwargs):
+    def build(self, model_name='funnel', D_in=0, H=0, D_out=0):
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
