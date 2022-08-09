@@ -39,15 +39,10 @@ class Metrics():
         self.log('\nNew Experiment: {}'.format(self.start))
     
     def infer(self):
-        self.predictions = np.concatenate(self.predictions, axis=0)
-        self.predictions = np.reshape(self.predictions, (-1, 2))
-        self.predictions = pd.DataFrame(self.predictions, columns=['id','predictions'])
-        self.predictions['id'] = self.predictions['id'].astype('int64')
-        print('self.predictions.iloc[:10]', self.predictions.shape, self.predictions.iloc[:10])
-        self.predictions.to_csv('cosmosis_inference.csv', 
-                                header=['id','predictions'], 
-                                index=False)
-        print('inference complete and saved to csv...')
+        self.predictions = np.concatenate(self.predictions)
+        self.predictions = pd.DataFrame(self.predictions)
+        self.predictions.to_csv('./logs/{}_inference.csv'.format(self.start), index=True)
+        print('inference {} complete and saved to csv...'.format(self.start))
 
     def sk_metric(self, flag):
 
@@ -255,7 +250,7 @@ class Learn():
             
         self.metrics.log(self.model.children)
         
-        if Criterion:
+        if Criterion is not None:
             self.criterion = Criterion(**crit_params)
             if self.gpu: self.criterion.to('cuda:0')
             self.metrics.log('criterion: {}\n{}'.format(self.criterion, crit_params))
@@ -274,6 +269,8 @@ class Learn():
             with no_grad():
                 self.run('test')
                 
+            self.metrics.report()  
+            
         else: # no Criterion implies inference mode
             with no_grad():
                 self.run('infer')
@@ -288,8 +285,6 @@ class Learn():
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(
                         self.metrics.start.strftime("%Y%m%d_%H%M"), i), weight)
-        self.metrics.report()
-        
         
     def run(self, flag): 
         #question: does passing the datadic around create copies?
@@ -322,20 +317,28 @@ class Learn():
     
         for data in dataloader:
             i += self.bs
-            if self.gpu:
+            
+            if self.gpu: # overwrite the datadic with a new copy on the gpu
                 _data = {}
                 for d in data:
-                    _data[d] = data[d].to('cuda:0', non_blocking=True)
+                    if type(data[d]) == list: # if input is a list of lists of embedding indices
+                        datalists = []
+                        for j in data[d]: 
+                            datalists.append(j.to('cuda:0', non_blocking=True))
+                        _data[d] = datalists
+                    else:
+                        _data[d] = data[d].to('cuda:0', non_blocking=True)
                 data = _data
                         
             y_pred = self.model(data)
-                
+            
             if flag == 'infer':
-                self.metrics.predictions.append(np.concatenate((y_pred, data['y']), axis=1))
+                self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
-                if self.squeeze_y: y = squeeze(data['y'])
+                y = data['y']
+                if self.squeeze_y: y = squeeze(y)
                 self.opt.zero_grad()
-                b_loss = self.criterion(y_pred, data['y'])
+                b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:
                     self.metrics.sk_y.append(data['y'].detach().cpu().numpy())

@@ -30,47 +30,43 @@ class CDataset(Dataset, ABC):
     do_not_pad = ['featurename',...]  
         these features will not be padded
     """    
-    def __init__ (self, features=[], targets=[], aux=[], embeds=[], 
+    def __init__ (self, features=[], targets=[], embeds=[], 
                   embed_lookup={}, transform=[], target_transform=[], 
                   pad=None, flatten=False, do_not_pad=[None], 
                   as_tensor=True, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.embeds, self.embed_lookup = embeds, embed_lookup
-        self.features, self.targets, self.aux = features, targets, aux
+        self.features, self.targets = features, targets
         self.pad, self.do_not_pad = pad, do_not_pad
         self.flatten, self.as_tensor = flatten, as_tensor
-        self.ds = self.load_data(**kwargs)
-        try: 
-            self.ds_idx = list(self.ds.keys())
-        except: 
-            pass
+        self.ds = self.load_data(**kwargs)        
+        if not hasattr(self, 'ds_idx'):
+            try:
+                self.ds_idx = list(self.ds.keys())
+            except:
+                NotImplemented("if dataset is not loaded as a dict \
+                               load_data() must set self.ds_idx")
+                
         print('CDataset created...')
-    
-    def __getitem__(self, i):
-        datadict = {}
-        if len(self.features) > 0:
-            X = self._get_features(self.ds[i], self.features)
-            for transform in self.transform:
-                X = transform(X)
-            datadict['X'] = X
-            
-        if len(self.embeds) > 0:
-            embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
-            datadict['embed_idx'] = embed_idx
         
-        if len(self.targets) > 0:
-            y = self._get_features(self.ds[i], self.targets)
-            for transform in self.target_transform:
-                y = transform(y)
-            datadict['y'] = y
-            
-        if len(self.aux) > 0:
-            aux = self._get_features(self.ds[i], self.aux)
-            datadic['aux'] = aux
-            
-        return datadict
-
-            
+    @abstractmethod
+    def load_data(self, kwargs):
+        
+        datadic = {1: {'feature_1': np.asarray([.04]),
+                       'feature_2': np.asarray([.02]),
+                       'feature_3': np.asarray(['b']),
+                       'feature_4': np.asarray(['c','c','d']),
+                       'feature_5': np.asarray([1.1])},
+                   2: {'feature_1': np.asarray([.03]),
+                       'feature_2': np.asarray([.01]),
+                       'feature_3': np.asarray(['a']),
+                       'feature_4': np.asarray(['d','d','d']),
+                       'feature_5': np.asarray([1.2])}}
+        
+        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0}
+        #dont forget an embedding for the padding '0' (padding_idx)
+        return datadic
+    
     def __iter__(self):
         for i in self.ds_idx:
             yield self.__getitem__(i)
@@ -78,19 +74,42 @@ class CDataset(Dataset, ABC):
     def __len__(self):
         return len(self.ds_idx)
     
+    def __getitem__(self, i):
+        """this func feeds the model's forward().  use the datadic keys 
+        to direct flow"""
+        datadic = {}
+        if len(self.features) > 0:
+            X = self._get_features(self.ds[i], self.features)
+            for transform in self.transform:
+                X = transform(X) 
+            if self.as_tensor: X = as_tensor(X)
+            datadic['X'] = X
+            
+        if len(self.embeds) > 0:
+            embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
+            datadic['embed_idx'] = embed_idx
+        
+        if len(self.targets) > 0:
+            y = self._get_features(self.ds[i], self.targets)
+            for transform in self.target_transform:
+                y = transform(y)
+            if self.as_tensor: X = as_tensor(X)
+            datadic['y'] = y
+            
+        return datadic   
+    
     def _get_features(self, datadic, features):
+        """select which features to load"""
         data = []
         for f in features:
             out = datadic[f]
             if self.pad is not None:
                 if f not in self.do_not_pad:
                     out = np.pad(out, (0, (self.pad - out.shape[0])))
-            if self.flatten: out = np.reshape(out, -1)  
+            if self.flatten:
+                out = np.reshape(out, -1)  
             data.append(out)
-        data = np.concatenate(data)
-        if self.as_tensor: data = as_tensor(data)
-        
-        return data
+        return np.concatenate(data)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         """convert a list of 1 or more categorical features to an array of ints which can then
@@ -118,24 +137,6 @@ class CDataset(Dataset, ABC):
             
         return embed_idx
     
-    @abstractmethod
-    def load_data(self, kwargs):
-        
-        datadic = {1: {'feature_1': np.asarray([.04]),
-                       'feature_2': np.asarray([.02]),
-                       'feature_3': np.asarray(['b']),
-                       'feature_4': np.asarray(['c','c','d']),
-                       'feature_5': np.asarray([1.1])},
-                   2: {'feature_1': np.asarray([.03]),
-                       'feature_2': np.asarray([.01]),
-                       'feature_3': np.asarray(['a']),
-                       'feature_4': np.asarray(['d','d','d']),
-                       'feature_5': np.asarray([1.2])}}
-        
-        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0}
-        #dont forget an embedding for the padding '0' (padding_idx)
-        return datadic
-       
     
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
@@ -148,11 +149,11 @@ class ImageDatasetStats():
         self.stats = None
         i = 1
         print('images to process: {}'.format(len(dataset.ds_idx)))
-        for image in dataset:
+        for data in dataset:
             if self.stats == None:
-                self.stats = ImStat(image[0])
+                self.stats = ImStat(data['X'])
             else: 
-                self.stats += ImStat(image[0])
+                self.stats += ImStat(data['X'])
                 i += 1
             if i % 10000 == 0:
                 print('images processed: {}'.format(i))
@@ -187,6 +188,7 @@ class DType():
     def __call__(self, arr):
         return arr.astype(self.datatype)
     
+    
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
     dataset = torchvision datasets class name str ('FakeData')
@@ -194,18 +196,16 @@ class TVDS(CDataset):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.ds_idx = list(range(len(self.ds)))
         print('TVDS created...')
         
     def __getitem__(self, i):
-        X = self.ds[i][0]
-        #X = np.reshape(np.asarray(self.ds[i][0]), -1).astype(np.float32)
-        y = self.ds[i][1]
-        #y = np.squeeze(np.asarray(self.ds[i][1]).astype(np.int64))
-        return X, [], y
-
+        image = self.ds[i][0]
+        label = self.ds[i][1]
+        return {'X': image, 'y': label}
+        
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
+        self.ds_idx = list(range(len(ds)))
         return ds
         
         
@@ -225,5 +225,4 @@ class SKDS(CDataset):
         for i in range(len(ds[0])):
             datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
                           'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype)}
-
         return datadic

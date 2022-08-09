@@ -50,7 +50,7 @@ class CModel(nn.Module):
         self.weight_init()
         print('CModel loaded...')
                             
-    def build(self, **model_params):
+    def build(self, **kwargs):
         self.layers = []
         raise NotImplementedError('subclass and implement build()...')
         
@@ -80,7 +80,8 @@ class CModel(nn.Module):
         return embeddings
 
     def forward(self, data):
-        """data = {}
+        """data = {} is passed from CDataset().__getitem__() (use the keys to
+        direct the flow, overwrite forward())
         X = torch tensor of concatenated continuous feature vectors
         embed_idx = a list of lists (one for each feature) of torch.cuda tensor int64 
         indices (keys) to be fed to the embedding layer)
@@ -150,7 +151,7 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def build(self, model_name='funnel', D_in=0, H=0, D_out=0):
+    def build(self, model_name='funnel', D_in=0, H=0, D_out=0, **kwargs):
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
