@@ -3,21 +3,9 @@ from math import sqrt
 from torch import nn, cat, squeeze, softmax, Tensor, flatten, sigmoid, max, mean
 from torch.nn import functional as F
 
-import torchvision.models as torchvisionmodels
+from torchvision import models as torchvisionmodels
 
 
-def tv_model(model_params):
-    launcher = getattr(torchvisionmodels, model_params['model_name'])
-    model = launcher(**model_params['tv_params'])
-    
-    if model_params['model_name'] in ['resnet18','resnet34','resnet50',
-                                      'wide_resnet50_2','resnext50_32x4d']:
-        model.conv1 = nn.Conv2d(in_channels=model_params['in_channels'], 
-                                out_channels=64, kernel_size=7, stride=2, 
-                                padding=3, bias=False)
-        
-    print('TorchVision model {} loaded...'.format(model_params['model_name']))
-    return model
 
 def logsumexp_2d(tensor):
     tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
@@ -25,12 +13,7 @@ def logsumexp_2d(tensor):
     outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
     return outputs
 
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.size(0), -1)
-    
-    
+     
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
     
@@ -107,8 +90,7 @@ class CModel(nn.Module):
         return X
     
     def adapt(self, D_in, D_out, dropout):
-        """prepends a trainable feedforward layer
-        """
+        """prepends a trainable feedforward layer"""
         for l in self.ff_unit(D_in, D_out, activation=None, dropout=dropout)[::-1]:
             self.layers.insert(0, l)
             
@@ -135,8 +117,21 @@ class CModel(nn.Module):
         if dropout is not None: conv.append(nn.Dropout(p=dropout))
                         
         return nn.Sequential(*conv)
-    
 
+    
+def tv_model(model_params):
+    """a torchvision model launcher"""
+    launcher = getattr(torchvisionmodels, model_params['model_name'])
+    model = launcher(**model_params['tv_params'])
+
+    def forward(data): # monkey patch
+        return model._forward_impl(data['image'])
+    
+    model.forward = forward
+    print('torchvision model {} loaded...'.format(model_params['model_name'])) 
+    return model
+    
+    
 class SModel(CModel):
     """TODO:  A base class wrapper for cosmosis sklearn models
     """
@@ -161,3 +156,10 @@ class FFNet(CModel):
         self.layers = [l for ffu in layers for l in ffu] # flatten
         
         print('FFNet model loaded...')
+        
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+

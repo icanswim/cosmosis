@@ -276,10 +276,12 @@ class Learn():
                 self.run('infer')
         
         if save_model:
-            if adapt: save(self.model, './models/{}.pth'.format(
+            if adapt: 
+                save(self.model, './models/{}.pth'.format(
                             self.metrics.start.strftime("%Y%m%d_%H%M")))
-            else: save(self.model.state_dict(), './models/{}.pth'.format(
-                                         self.metrics.start.strftime("%Y%m%d_%H%M")))
+            else: 
+                save(self.model.state_dict(), './models/{}.pth'.format(
+                            self.metrics.start.strftime("%Y%m%d_%H%M")))
             if hasattr(self.model, 'embeddings'):
                 for i, embedding in enumerate(self.model.embeddings):
                     weight = embedding.weight.detach().cpu().numpy()

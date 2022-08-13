@@ -201,7 +201,7 @@ class TVDS(CDataset):
     def __getitem__(self, i):
         image = self.ds[i][0]
         label = self.ds[i][1]
-        return {'X': image, 'y': label}
+        return {'image': image, 'y': label}
         
     def load_data(self, dataset, tv_params):
         ds = getattr(tvds, dataset)(**tv_params)
