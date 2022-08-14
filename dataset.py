@@ -151,9 +151,9 @@ class ImageDatasetStats():
         print('images to process: {}'.format(len(dataset.ds_idx)))
         for data in dataset:
             if self.stats == None:
-                self.stats = ImStat(data['X'])
+                self.stats = ImStat(data['image'])
             else: 
-                self.stats += ImStat(data['X'])
+                self.stats += ImStat(data['image'])
                 i += 1
             if i % 10000 == 0:
                 print('images processed: {}'.format(i))

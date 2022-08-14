@@ -21,7 +21,7 @@ class CModel(nn.Module):
         'feature' = name/key of feature to be embedded
         voc = vocabulary size (int) 
         vec = length of the embedding vectors (int)
-        padding_idx = False/int 
+        padding_idx = None/int 
         param.requires_grad = True/False 
     """
     def __init__(self, model_params):
