@@ -55,7 +55,7 @@ class CModel(nn.Module):
                 nn.init.constant_(m.bias, 0)
         
     def embedding_layer(self, embed_params):
-        embeddings = [nn.Embedding(voc, vec, padding_idx).to('cuda:0') \
+        embeddings = [nn.Embedding(voc, vec, padding_idx) \
                       for _, voc, vec, padding_idx, _ in embed_params]
         for i, e in enumerate(embed_params):
             param = embeddings[i].weight
@@ -74,13 +74,15 @@ class CModel(nn.Module):
             
         if 'embed_idx' in data:
             embedded = []
-            for e, idx in enumerate(data['embed_idx']): 
+            for e, idx in enumerate(data['embed_idx']):
                 out = self.embeddings[e](idx)
                 embedded.append(flatten(out, start_dim=1))
+                
             if len(embedded) > 1:
                 embedded = cat(embedded, dim=1)
+                
             if 'X' in data:
-                X = cat([data['X'], *embedded], dim=1)
+                X = cat([X, *embedded], dim=1)
             else:  
                 X = embedded 
                 

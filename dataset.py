@@ -31,12 +31,11 @@ class CDataset(Dataset, ABC):
         these features will not be padded
     """    
     def __init__ (self, features=[], targets=[], embeds=[], 
-                  embed_lookup={}, transform=[], target_transform=[], 
+                  transform=[], target_transform=[], 
                   pad=None, flatten=False, do_not_pad=[None], 
                   as_tensor=True, **kwargs):
         self.transform, self.target_transform = transform, target_transform
-        self.embeds, self.embed_lookup = embeds, embed_lookup
-        self.features, self.targets = features, targets
+        self.features, self.targets, self.embeds = features, targets, embeds
         self.pad, self.do_not_pad = pad, do_not_pad
         self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)        
@@ -54,16 +53,17 @@ class CDataset(Dataset, ABC):
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
-                       'feature_3': np.asarray(['b']),
+                       'feature_3': np.asarray(['z1']),
                        'feature_4': np.asarray(['c','c','d']),
                        'feature_5': np.asarray([1.1])},
                    2: {'feature_1': np.asarray([.03]),
                        'feature_2': np.asarray([.01]),
-                       'feature_3': np.asarray(['a']),
-                       'feature_4': np.asarray(['d','d','d']),
+                       'feature_3': np.asarray(['x1','z1','y1']),
+                       'feature_4': np.asarray(['d','a','d']),
                        'feature_5': np.asarray([1.2])}}
         
-        self.embed_lookup = {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0}
+        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
+                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0}}
         #dont forget an embedding for the padding '0' (padding_idx)
         return datadic
     
@@ -116,7 +116,7 @@ class CDataset(Dataset, ABC):
         be fed to an embedding layer
         datadic = {'feature_name': 'feature'}
         embeds = ['feature_name','feature_name']
-        embed_lookup = {'feature_name': int, '0': 0} 
+        embed_lookup = {'feature_name': {'feature': int, '0': 0}}
             dont forget an embedding for the padding (padding_idx)
         do_not_pad = ['feature_name']
         """
@@ -130,7 +130,7 @@ class CDataset(Dataset, ABC):
                     
             idx = []        
             for i in np.reshape(out, -1).tolist():
-                idx.append(np.reshape(np.asarray(embed_lookup[i]), -1).astype('int64'))
+                idx.append(np.reshape(np.asarray(embed_lookup[e][i]), -1).astype('int64'))
             idx = np.concatenate(idx)
             if self.as_tensor:  as_tensor(idx)
             embed_idx.append(idx)
