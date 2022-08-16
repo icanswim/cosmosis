@@ -16,20 +16,29 @@ def logsumexp_2d(tensor):
      
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
-    
+    device = 'cpu'/'cuda:0' 
     embed_params = [('feature', voc, vec, padding_idx, param.requires_grad),...]
         'feature' = name/key of feature to be embedded
         voc = vocabulary size (int) 
         vec = length of the embedding vectors (int)
         padding_idx = None/int 
-        param.requires_grad = True/False 
+        param.requires_grad = True/False
+        
     """
     def __init__(self, model_params):
         super().__init__()
-        if 'embed_params' in model_params:
-            self.embeddings = self.embedding_layer(model_params['embed_params'])
+        
+        self.device = 'cuda:0'
+        if 'device' in model_params:  
+            self.device = model_params['device']
+            
         self.build(**model_params)
+        
+        if 'embed_params' in model_params:
+            self.embeddings = self.embedding_layer(model_params['embed_params'], self.device)
+            
         self.layers = nn.ModuleList(self.layers) 
+        
         self.weight_init()
         print('CModel loaded...')
                             
@@ -54,8 +63,8 @@ class CModel(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         
-    def embedding_layer(self, embed_params):
-        embeddings = [nn.Embedding(voc, vec, padding_idx) \
+    def embedding_layer(self, embed_params, device):
+        embeddings = [nn.Embedding(voc, vec, padding_idx).to(device) \
                       for _, voc, vec, padding_idx, _ in embed_params]
         for i, e in enumerate(embed_params):
             param = embeddings[i].weight
@@ -148,7 +157,7 @@ class FFNet(CModel):
     model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def build(self, model_name='funnel', D_in=0, H=0, D_out=0, **kwargs):
+    def build(self, model_name='funnel', D_in=0, H=0, D_out=0, device='cuda:0', **kwargs):
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
@@ -156,6 +165,7 @@ class FFNet(CModel):
             layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), dropout=config['dropout'][i]))
         layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
+        self.device = device
         
         print('FFNet model loaded...')
         

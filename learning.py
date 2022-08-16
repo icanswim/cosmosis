@@ -211,6 +211,8 @@ class Learn():
         self.metrics.log('sampler: {}\n{}'.format(Sampler, sample_params))
         self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                     epochs, batch_size, save_model, load_model))
+
+        if not gpu: model_params['device'] = 'cpu'
         
         if load_model is not None:
             try: #uses the same embed params for all datasets (train/val/test)
