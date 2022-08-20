@@ -91,7 +91,7 @@ class CModel(nn.Module):
                 embedded = cat(embedded, dim=1)
                 
             if 'X' in data:
-                X = cat([X, *embedded], dim=1)
+                X = cat([X, embedded], dim=1)
             else:  
                 X = embedded 
                 
