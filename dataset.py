@@ -18,25 +18,25 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features = ['featurename',...]
-    embeds = ['featurename',...]
-    targets = ['featurename',...]
+    features = ['feature',...]
+    embeds = ['feature',...]
+    targets = ['feature',...]
     embed_lookup = {'label': index}
     ds_idx = [1,2,3,...]  
         a list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class(),...]
-    pad = int/False  
+    pad = int/None
         each feature will be padded to this length
-    do_not_pad = ['featurename',...]  
+    pad_feats = ['feature','feature'...]  
         these features will not be padded
     """    
     def __init__ (self, features=[], targets=[], embeds=[], 
                   transform=[], target_transform=[], 
-                  pad=None, flatten=False, do_not_pad=[None], 
+                  pad=None, flatten=False, pad_feats=[], 
                   as_tensor=True, **kwargs):
         self.transform, self.target_transform = transform, target_transform
         self.features, self.targets, self.embeds = features, targets, embeds
-        self.pad, self.do_not_pad = pad, do_not_pad
+        self.pad, self.pad_feats = pad, pad_feats
         self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)        
         if not hasattr(self, 'ds_idx'):
@@ -93,7 +93,7 @@ class CDataset(Dataset, ABC):
             y = self._get_features(self.ds[i], self.targets)
             for transform in self.target_transform:
                 y = transform(y)
-            if self.as_tensor: X = as_tensor(X)
+            if self.as_tensor: y = as_tensor(y)
             datadic['y'] = y
             
         return datadic   
@@ -103,11 +103,10 @@ class CDataset(Dataset, ABC):
         data = []
         for f in features:
             out = datadic[f]
-            if self.pad is not None:
-                if f not in self.do_not_pad:
-                    out = np.pad(out, (0, (self.pad - out.shape[0])))
+            if f in self.pad_feats:
+                out = np.pad(out, (0, (self.pad - out.shape[0])))            
             if self.flatten:
-                out = np.reshape(out, -1)  
+                out = np.reshape(out, -1)
             data.append(out)
         return np.concatenate(data)
         
@@ -118,16 +117,13 @@ class CDataset(Dataset, ABC):
         embeds = ['feature_name','feature_name']
         embed_lookup = {'feature_name': {'feature': int, '0': 0}}
             dont forget an embedding for the padding (padding_idx)
-        do_not_pad = ['feature_name']
+        pad_feats = ['feature_name','feature_name']
         """
         embed_idx = []
         for e in embeds:
             out = datadic[e]
-            
-            if self.pad is not None:
-                if e not in self.do_not_pad:
-                    out = np.pad(out, (0, (self.pad - out.shape[0])))
-                    
+            if e in self.pad_feats:
+                out = np.pad(out, (0, (self.pad - out.shape[0])))
             idx = []        
             for i in np.reshape(out, -1).tolist():
                 idx.append(np.reshape(np.asarray(embed_lookup[e][i]), -1).astype('int64'))

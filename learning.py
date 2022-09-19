@@ -215,7 +215,7 @@ class Learn():
         if not gpu: model_params['device'] = 'cpu'
         
         if load_model is not None:
-            try: #uses the same embed params for all datasets (train/val/test)
+            try: 
                 model = Model(model_params)
                 model.load_state_dict(load('./models/'+load_model))
                 print('model loaded from state_dict...')
@@ -291,9 +291,7 @@ class Learn():
                         self.metrics.start.strftime("%Y%m%d_%H%M"), i), weight)
         
     def run(self, flag): 
-        #question: does passing the datadic around create copies?
         e_loss, e_sk, i = 0, 0, 0
-        
         if flag == 'train': 
             self.model.training = True
             dataset = self.train_ds
@@ -318,10 +316,9 @@ class Learn():
                                 sampler=self.sampler(flag=flag), 
                                 num_workers=8, pin_memory=True, 
                                 drop_last=drop_last)
-    
+       
         for data in dataloader:
             i += self.bs
-            
             if self.gpu: # overwrite the datadic with a new copy on the gpu
                 _data = {}
                 for d in data:
