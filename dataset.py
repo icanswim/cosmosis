@@ -8,34 +8,36 @@ import numpy as np
 from torch.utils.data import Dataset, ConcatDataset
 from torch import as_tensor, squeeze
 
-from torchvision import datasets as tvds
-
-from sklearn import datasets as skds
-
 from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+#scikit and torchvision datasets are imported by their wrapper classes SKDS and TVDS
 
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-    features = ['feature',...]
-    embeds = ['feature',...]
-    targets = ['feature',...]
-    embed_lookup = {'label': index}
+   input_dict = {'model_input': {'X1': ['feature1', 'feature2', ...],
+                                  'X2': ['feature3', 'feature4', ...],
+                                  'embeds': ['feature5, 'feature6', ...]},
+                 'criterion_input': {'target': ['feature7', ...],
+                                      'embeds': ['feature8, ...]}}
+                                      
+    ds_params = {'train_params': {'input_dict': {'model_input': {},
+                                                 'criterion_input': {'target': tensor}}}}
+
     ds_idx = [1,2,3,...]  
         a list of indices or keys to be passed to the Sampler and Dataloader
     transform/target_transform = [Transformer_Class(),...]
     pad = int/None
         each feature will be padded to this length
     pad_feats = ['feature','feature'...]  
-        these features will not be padded
+    
     """    
-    def __init__ (self, features=[], targets=[], embeds=[], 
-                  transform=[], target_transform=[], 
-                  pad=None, flatten=False, pad_feats=[], 
+    def __init__ (self, input_dict={}, transform=[], target_transform=[], 
+                  pad=None, pad_feats=[], flatten=False, 
                   as_tensor=True, **kwargs):
+        self.input_dict = input_dict
         self.transform, self.target_transform = transform, target_transform
-        self.features, self.targets, self.embeds = features, targets, embeds
         self.pad, self.pad_feats = pad, pad_feats
         self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)        
@@ -50,7 +52,12 @@ class CDataset(Dataset, ABC):
         
     @abstractmethod
     def load_data(self, kwargs):
-        
+        """
+        dont forget an embedding for the padding '0' (padding_idx)
+        self.ds_idx = [1,2,5,17,...] #some subset
+        if no ds_idx provided the entire dataset will be used, 
+        optionally this could be passed to the Selector/Sampler class in its sample_params
+        """
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([.02]),
                        'feature_3': np.asarray(['z1']),
@@ -64,7 +71,7 @@ class CDataset(Dataset, ABC):
         
         self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
                              'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0}}
-        #dont forget an embedding for the padding '0' (padding_idx)
+
         return datadic
     
     def __iter__(self):
@@ -75,33 +82,45 @@ class CDataset(Dataset, ABC):
         return len(self.ds_idx)
     
     def __getitem__(self, i):
-        """this func feeds the model's forward().  use the datadic keys 
+        """this func feeds the model's forward().  use the input_dict keys 
         to direct flow"""
-        datadic = {}
-        if len(self.features) > 0:
-            X = self._get_features(self.ds[i], self.features)
-            for transform in self.transform:
-                X = transform(X) 
-            if self.as_tensor: X = as_tensor(X)
-            datadic['X'] = X
-            
-        if len(self.embeds) > 0:
-            embed_idx = self._get_embed_idx(self.ds[i], self.embeds, self.embed_lookup)
-            datadic['embed_idx'] = embed_idx
+        datadic = {'model_input': {},
+                   'criterion_input': {}}
         
-        if len(self.targets) > 0:
-            y = self._get_features(self.ds[i], self.targets)
-            for transform in self.target_transform:
-                y = transform(y)
-            if self.as_tensor: y = as_tensor(y)
-            datadic['y'] = y
+        for model_key in self.input_dict['model_input']:
+            if model_key == 'embed':
+                embed_idx = self._get_embed_idx(self.ds[i], 
+                                                self.input_dict['model_input']['embed'], 
+                                                self.embed_lookup)
+                datadic['model_input']['embed_idx'] = embed_idx
+            else:
+                out = self._get_features(self.ds[i], self.input_dict['model_input'][model_key])
+                for transform in self.transform:
+                    out = transform(out)
+                if self.as_tensor: out = as_tensor(out)
+                datadic['model_input'][model_key] = out
+        
+        if 'criterion_input' in self.input_dict:
+            for crit_key in self.input_dict['criterion_input']:
+                if crit_key == 'embed':
+                    embed_idx = self._get_embed_idx(self.ds[i], 
+                                                    self.input_dict['criterion_input']['embed'], 
+                                                    self.embed_lookup)
+                    datadic['criterion_input']['embed_idx'] = embed_idx
+                    
+                else:
+                    out = self._get_features(self.ds[i], self.input_dict['criterion_input'][crit_key])
+                    for transform in self.target_transform:
+                        out = transform(out)
+                    if self.as_tensor: out = as_tensor(out)
+                    datadic['criterion_input'][crit_key] = out
             
-        return datadic   
+        return datadic
     
     def _get_features(self, datadic, features):
         """select which features to load"""
         data = []
-        for f in features:
+        for f in features:                
             out = datadic[f]
             if f in self.pad_feats:
                 out = np.pad(out, (0, (self.pad - out.shape[0])))            
@@ -191,8 +210,9 @@ class TVDS(CDataset):
     tv_params = dict of torchvision.dataset parameters ({'size': 1000})
     """
     def __init__(self, **kwargs):
+        print('creating torch vision {} dataset...'.format(kwargs['dataset']))
+        
         super().__init__(**kwargs)
-        print('TVDS created...')
         
     def __getitem__(self, i):
         image = self.ds[i][0]
@@ -200,6 +220,7 @@ class TVDS(CDataset):
         return {'image': image, 'y': label}
         
     def load_data(self, dataset, tv_params):
+        from torchvision import datasets as tvds
         ds = getattr(tvds, dataset)(**tv_params)
         self.ds_idx = list(range(len(ds)))
         return ds
@@ -208,17 +229,27 @@ class TVDS(CDataset):
 class SKDS(CDataset):
     """A wrapper for sklearn.datasets
     https://scikit-learn.org/stable/datasets/sample_generators.html
-    make = sklearn datasets method name str ('make_regression')
+    dataset = sklearn datasets method name str ('make_regression')
     sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
     """    
     def __init__(self, **kwargs):
+        print('creating scikit learn {} dataset...'.format(kwargs['dataset']))
         super().__init__(**kwargs)
-        print('SKDS {} created...'.format(kwargs['make']))
         
-    def load_data(self, make, sk_params, features_dtype, targets_dtype):              
-        ds = getattr(skds, make)(**sk_params)
+    def load_data(self, dataset, sk_params, features_dtype, targets_dtype):
+        from sklearn import datasets as skds              
+        ds = getattr(skds, dataset)(**sk_params)
         datadic = {}
         for i in range(len(ds[0])):
             datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
                           'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype)}
         return datadic
+
+    
+
+    
+    
+
+
+
+

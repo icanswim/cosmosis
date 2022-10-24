@@ -320,23 +320,31 @@ class Learn():
         for data in dataloader:
             i += self.bs
             if self.gpu: # overwrite the datadic with a new copy on the gpu
-                _data = {}
-                for d in data:
-                    if type(data[d]) == list: # if input is a list of lists of embedding indices
-                        datalists = []
-                        for j in data[d]: 
-                            datalists.append(j.to('cuda:0', non_blocking=True))
-                        _data[d] = datalists
-                    else:
-                        _data[d] = data[d].to('cuda:0', non_blocking=True)
-                data = _data
+                if type(data) == dict:
+                    _data = {'model_input': {},
+                             'criterion_input': {}}
+                    for d in data:
+                        for j in data[d]:
+                            if type(data[d][j]) == list: # if input is a list of lists of embedding indices
+                                datalists = []
+                                for k in data[d][j]: 
+                                    datalists.append(k.to('cuda:0', non_blocking=True))
+                                _data[d][j] = datalists
+                            else:
+                                _data[d][j] = data[d][j].to('cuda:0', non_blocking=True)
+                    data = _data
+                else:
+                    data = data.to('cuda:0', non_blocking=True)
                         
-            y_pred = self.model(data)
+            y_pred = self.model(data['model_input'])
             
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
-                y = data['y']
+                if type(data) == dict:
+                    y = data['criterion_input']['target']
+                else: 
+                    y = data.y
                 if self.squeeze_y: y = squeeze(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)

@@ -3,8 +3,7 @@ from math import sqrt
 from torch import nn, cat, squeeze, softmax, Tensor, flatten, sigmoid, max, mean
 from torch.nn import functional as F
 
-from torchvision import models as torchvisionmodels
-
+# torchvision models are imported by its launcher tv_models()
 
 
 def logsumexp_2d(tensor):
@@ -131,7 +130,9 @@ class CModel(nn.Module):
 
     
 def tv_model(model_params):
-    """a torchvision model launcher"""
+    """A torchvision model launcher"""
+    from torchvision import models as torchvisionmodels
+    
     launcher = getattr(torchvisionmodels, model_params['model_name'])
     model = launcher(**model_params['tv_params'])
 
