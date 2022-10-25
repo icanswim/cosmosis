@@ -166,9 +166,9 @@ class ImageDatasetStats():
         print('images to process: {}'.format(len(dataset.ds_idx)))
         for data in dataset:
             if self.stats == None:
-                self.stats = ImStat(data['image'])
+                self.stats = ImStat(data['model_input']['image'])
             else: 
-                self.stats += ImStat(data['image'])
+                self.stats += ImStat(data['model_input']['image'])
                 i += 1
             if i % 10000 == 0:
                 print('images processed: {}'.format(i))
@@ -217,7 +217,8 @@ class TVDS(CDataset):
     def __getitem__(self, i):
         image = self.ds[i][0]
         label = self.ds[i][1]
-        return {'image': image, 'y': label}
+        return {'model_input': {'image': image},
+                'criterion_input': {'target': label}}
         
     def load_data(self, dataset, tv_params):
         from torchvision import datasets as tvds

@@ -350,7 +350,7 @@ class Learn():
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 if self.metrics.skm is not None:
-                    self.metrics.sk_y.append(data['y'].detach().cpu().numpy())
+                    self.metrics.sk_y.append(y.detach().cpu().numpy())
                     self.metrics.sk_pred.append(y_pred.detach().cpu().numpy())
                 if flag == 'train':
                     b_loss.backward()
