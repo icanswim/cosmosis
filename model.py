@@ -35,8 +35,9 @@ class CModel(nn.Module):
         
         if 'embed_params' in model_params:
             self.embeddings = self.embedding_layer(model_params['embed_params'], self.device)
-            
-        self.layers = nn.ModuleList(self.layers) 
+        
+        if hasattr(self, 'layers'):
+            self.layers = nn.ModuleList(self.layers) 
         
         self.weight_init()
         print('CModel loaded...')
@@ -71,44 +72,43 @@ class CModel(nn.Module):
         return embeddings
 
     def forward(self, data):
-        """data = {} is passed from CDataset().__getitem__() (use the keys to
-        direct the flow, overwrite forward())
-        X = torch tensor of concatenated continuous feature vectors
+        """data['X'] = torch tensor of concatenated continuous feature vectors
         embed_idx = a list of lists (one for each feature) of torch.cuda tensor int64 
-        indices (keys) to be fed to the embedding layer)
+            indices (keys) to be fed to the embedding layer
         """
+
         if 'X' in data: 
             X = data['X']
-            
+
         if 'embed_idx' in data:
             embedded = []
             for e, idx in enumerate(data['embed_idx']):
                 out = self.embeddings[e](idx)
                 embedded.append(flatten(out, start_dim=1))
-                
+
             if len(embedded) > 1:
                 embedded = cat(embedded, dim=1)
-                
+
             if 'X' in data:
                 X = cat([X, embedded], dim=1)
             else:  
-                X = embedded 
-                
+                X = embedded
+   
         for l in self.layers:
             X = l(X)
             
         return X
     
-    def adapt(self, D_in, D_out, dropout):
+    def adapt(self, in_channels, out_channels, dropout):
         """prepends a trainable feedforward layer"""
-        for l in self.ff_unit(D_in, D_out, activation=None, dropout=dropout)[::-1]:
+        for l in self.ff_unit(in_channels, out_channels, activation=None, dropout=dropout)[::-1]:
             self.layers.insert(0, l)
             
-    def ff_unit(self, D_in, D_out, activation=nn.SELU, dropout=.2):
+    def ff_unit(self, in_channels, out_channels, activation=nn.SELU, dropout=.2):
         ffu = []
-        ffu.append(nn.Linear(D_in, D_out))
+        ffu.append(nn.Linear(in_channels, out_channels))
         if activation is not None: ffu.append(activation())
-        ffu.append(nn.BatchNorm1d(D_out))
+        ffu.append(nn.BatchNorm1d(out_channels))
         if dropout is not None:  ffu.append(nn.Dropout(dropout))
         
         return nn.Sequential(*ffu)
@@ -147,24 +147,28 @@ def tv_model(model_params):
 class SModel(CModel):
     """TODO:  A base class wrapper for cosmosis sklearn models
     """
-    def __init__(self):
+    def build(self):
         pass
 
       
 class FFNet(CModel):
     model_config = {}
-    model_config['simple'] = {'shape': [('D_in',1),(1,1),(1,1/2),(1/2,'D_out')], 
+    model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1/2),(1/2,'out_channels')], 
                               'dropout': [.2, .3, .1]}
-    model_config['funnel'] = {'shape': [('D_in',1),(1,1/2),(1/2,1/2),(1/2,1/4),(1/4,1/4),(1/4,'D_out')], 
+    model_config['funnel'] = {'shape': [('in_channels',1),(1,1/2),(1/2,1/2),(1/2,1/4),
+                                        (1/4,1/4),(1/4,'out_channels')], 
                               'dropout': [.1, .2, .3, .2, .1]}
 
-    def build(self, model_name='funnel', D_in=0, H=0, D_out=0, device='cuda:0', **kwargs):
+    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, 
+                                                          device='cuda:0', **kwargs):
         config = FFNet.model_config[model_name]
         layers = []
-        layers.append(self.ff_unit(D_in, int(config['shape'][0][1]*H), dropout=config['dropout'][0]))
+        layers.append(self.ff_unit(in_channels, int(config['shape'][0][1]*hidden), 
+                                                           dropout=config['dropout'][0]))
         for i, s in enumerate(config['shape'][1:-1]):
-            layers.append(self.ff_unit(int(s[0]*H), int(s[1]*H), dropout=config['dropout'][i]))
-        layers.append([nn.Linear(int(config['shape'][-1][0]*H), D_out)])
+            layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
+                                                   dropout=config['dropout'][i]))
+        layers.append([nn.Linear(int(config['shape'][-1][0]*hidden), out_channels)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.device = device
         

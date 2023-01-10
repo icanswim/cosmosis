@@ -193,6 +193,7 @@ class Learn():
     adapt = (D_in, D_out, dropout)
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
+                 DataLoader=DataLoader,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
@@ -204,6 +205,7 @@ class Learn():
         self.squeeze_y = squeeze_y
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
+        self.DataLoader = DataLoader
         
         self.metrics = Metrics(**metrics_params)
         self.metrics.log('model: {}\n{}'.format(Model, model_params))
@@ -312,10 +314,10 @@ class Learn():
             dataset = self.test_ds
             drop_last = False
         
-        dataloader = DataLoader(dataset, batch_size=self.bs, 
-                                sampler=self.sampler(flag=flag), 
-                                num_workers=8, pin_memory=True, 
-                                drop_last=drop_last)
+        dataloader = self.DataLoader(dataset, batch_size=self.bs, 
+                                     sampler=self.sampler(flag=flag), 
+                                     num_workers=8, pin_memory=True, 
+                                     drop_last=drop_last)
        
         for data in dataloader:
             i += self.bs
@@ -325,7 +327,8 @@ class Learn():
                              'criterion_input': {}}
                     for d in data:
                         for j in data[d]:
-                            if type(data[d][j]) == list: # if input is a list of lists of embedding indices
+                            # if input is a list of lists of embedding indices
+                            if type(data[d][j]) == list: 
                                 datalists = []
                                 for k in data[d][j]: 
                                     datalists.append(k.to('cuda:0', non_blocking=True))
@@ -333,18 +336,18 @@ class Learn():
                             else:
                                 _data[d][j] = data[d][j].to('cuda:0', non_blocking=True)
                     data = _data
+                    y_pred = self.model(data['model_input'])
                 else:
                     data = data.to('cuda:0', non_blocking=True)
-                        
-            y_pred = self.model(data['model_input'])
-            
+                    y_pred = self.model(data)
+                    
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
                 if type(data) == dict:
                     y = data['criterion_input']['target']
                 else: 
-                    y = data.y
+                    y = data.y[:,0]
                 if self.squeeze_y: y = squeeze(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)

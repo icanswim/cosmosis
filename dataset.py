@@ -80,7 +80,7 @@ class CDataset(Dataset, ABC):
     
     def __len__(self):
         return len(self.ds_idx)
-    
+       
     def __getitem__(self, i):
         """this func feeds the model's forward().  use the input_dict keys 
         to direct flow"""
@@ -117,13 +117,43 @@ class CDataset(Dataset, ABC):
             
         return datadic
     
+    def __getitem__(self, i): 
+        datadic = {}
+        for input_key in self.input_dict:
+            datadic[input_key] = {}
+            for output_key in self.input_dict[input_key]:
+                print('input_key: ', input_key)
+                print('output_key: ', output_key)
+                if output_key == 'embed':
+                    out = self._get_embed_idx(self.ds[i], 
+                                              self.input_dict[input_key][output_key], 
+                                              self.embed_lookup)
+                else:
+                    out = self._get_features(self.ds[i], 
+                                             self.input_dict[input_key][output_key])
+                    
+                    if input_key == 'criterion_input':
+                        for target_transform in self.target_transform:
+                            out = target_transform(out)
+                    else:
+                        for transform in self.transform:
+                            out = transform(out)
+                        
+                if self.as_tensor: out = as_tensor(out)
+                datadic[input_key][output_key] = out
+                
+        return datadic
+    
     def _get_features(self, datadic, features):
         """select which features to load"""
         data = []
         for f in features:                
             out = datadic[f]
-            if f in self.pad_feats:
-                out = np.pad(out, (0, (self.pad - out.shape[0])))            
+            if f in self.pad_feats and self.pad != None:
+                if len(self.pad) == 1:
+                    out = np.pad(out, (0, (self.pad[0] - out.shape[0])))
+                elif len(self.pad) == 2:
+                    out = np.pad(out, ((0, (self.pad[0] - out.shape[0])), (0,(self.pad[1] - out.shape[1]))))       
             if self.flatten:
                 out = np.reshape(out, -1)
             data.append(out)
@@ -141,8 +171,8 @@ class CDataset(Dataset, ABC):
         embed_idx = []
         for e in embeds:
             out = datadic[e]
-            if e in self.pad_feats:
-                out = np.pad(out, (0, (self.pad - out.shape[0])))
+            if e in self.pad_feats and self.pad != None:
+                out = np.pad(out, (0, (self.pad[0] - out.shape[0])))
             idx = []        
             for i in np.reshape(out, -1).tolist():
                 idx.append(np.reshape(np.asarray(embed_lookup[e][i]), -1).astype('int64'))
