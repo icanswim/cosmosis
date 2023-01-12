@@ -23,6 +23,8 @@ class CModel(nn.Module):
         padding_idx = None/int 
         param.requires_grad = True/False
         
+    datadict keywords: 'X','embed'
+        
     """
     def __init__(self, model_params):
         super().__init__()
@@ -73,21 +75,23 @@ class CModel(nn.Module):
 
     def forward(self, data):
         """data['X'] = torch tensor of concatenated continuous feature vectors
-        embed_idx = a list of lists (one for each feature) of torch.cuda tensor int64 
+        embed = a list of lists (one for each feature) of torch.cuda tensor int64 
             indices (keys) to be fed to the embedding layer
         """
 
         if 'X' in data: 
             X = data['X']
 
-        if 'embed_idx' in data:
+        if 'embed' in data:
             embedded = []
-            for e, idx in enumerate(data['embed_idx']):
+            for e, idx in enumerate(data['embed']):
                 out = self.embeddings[e](idx)
                 embedded.append(flatten(out, start_dim=1))
 
             if len(embedded) > 1:
                 embedded = cat(embedded, dim=1)
+            else:
+                embedded = embedded[0]
 
             if 'X' in data:
                 X = cat([X, embedded], dim=1)

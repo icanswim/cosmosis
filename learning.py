@@ -191,6 +191,8 @@ class Learn():
     load_embed = None/'model_name'
     squeeze_y = True/False (torch.squeeze(y))
     adapt = (D_in, D_out, dropout)
+    
+    dataset keywords: 'criterion_input', 'model_input', 'target'
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  DataLoader=DataLoader,

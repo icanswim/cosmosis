@@ -16,21 +16,26 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
-   input_dict = {'model_input': {'X1': ['feature1', 'feature2', ...],
-                                  'X2': ['feature3', 'feature4', ...],
-                                  'embeds': ['feature5, 'feature6', ...]},
-                 'criterion_input': {'target': ['feature7', ...],
-                                      'embeds': ['feature8, ...]}}
-                                      
-    ds_params = {'train_params': {'input_dict': {'model_input': {},
-                                                 'criterion_input': {'target': tensor}}}}
-
+    ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_5'],
+                                                                 'X2': ['feature_5'],
+                                                                 'embed': ['feature_3']},
+                                                 'criterion_input': {'target': ['feature_2'],
+                                                                     'embed': ['feature_4']}},
+                                  'transform': [DummyTransform(), DummyTransformTwo()],
+                                  'target_transform': [DummyTransform()],
+                                  'pad': (5,),
+                                  'pad_feats': ['feature_5','feature_4'],
+                                  'boom': 'bang'}}
+        structure of the input_dict determines the structure of the output datadict
+        keywords: 'criterion_input','model_input','embed','target'
+        
     ds_idx = [1,2,3,...]  
         a list of indices or keys to be passed to the Sampler and Dataloader
-    transform/target_transform = [Transformer_Class(),...]
+    transform/target_transform = [Transformer_Class(),...] 
     pad = int/None
         each feature will be padded to this length
-    pad_feats = ['feature','feature'...]  
+    pad_feats = ['feature','feature'...]
+        select which features to pad
     
     """    
     def __init__ (self, input_dict={}, transform=[], target_transform=[], 
@@ -80,50 +85,16 @@ class CDataset(Dataset, ABC):
     
     def __len__(self):
         return len(self.ds_idx)
-       
-    def __getitem__(self, i):
-        """this func feeds the model's forward().  use the input_dict keys 
-        to direct flow"""
-        datadic = {'model_input': {},
-                   'criterion_input': {}}
-        
-        for model_key in self.input_dict['model_input']:
-            if model_key == 'embed':
-                embed_idx = self._get_embed_idx(self.ds[i], 
-                                                self.input_dict['model_input']['embed'], 
-                                                self.embed_lookup)
-                datadic['model_input']['embed_idx'] = embed_idx
-            else:
-                out = self._get_features(self.ds[i], self.input_dict['model_input'][model_key])
-                for transform in self.transform:
-                    out = transform(out)
-                if self.as_tensor: out = as_tensor(out)
-                datadic['model_input'][model_key] = out
-        
-        if 'criterion_input' in self.input_dict:
-            for crit_key in self.input_dict['criterion_input']:
-                if crit_key == 'embed':
-                    embed_idx = self._get_embed_idx(self.ds[i], 
-                                                    self.input_dict['criterion_input']['embed'], 
-                                                    self.embed_lookup)
-                    datadic['criterion_input']['embed_idx'] = embed_idx
-                    
-                else:
-                    out = self._get_features(self.ds[i], self.input_dict['criterion_input'][crit_key])
-                    for transform in self.target_transform:
-                        out = transform(out)
-                    if self.as_tensor: out = as_tensor(out)
-                    datadic['criterion_input'][crit_key] = out
-            
-        return datadic
     
-    def __getitem__(self, i): 
+    def __getitem__(self, i):         
+        """this func feeds the model's forward().  the structure of the input_dict 
+        determines the structure of the output datadict
+        keywords = 'criterion_input','embed'
+        """
         datadic = {}
         for input_key in self.input_dict:
             datadic[input_key] = {}
             for output_key in self.input_dict[input_key]:
-                print('input_key: ', input_key)
-                print('output_key: ', output_key)
                 if output_key == 'embed':
                     out = self._get_embed_idx(self.ds[i], 
                                               self.input_dict[input_key][output_key], 
@@ -139,7 +110,7 @@ class CDataset(Dataset, ABC):
                         for transform in self.transform:
                             out = transform(out)
                         
-                if self.as_tensor: out = as_tensor(out)
+                    if self.as_tensor: out = as_tensor(out)
                 datadic[input_key][output_key] = out
                 
         return datadic
