@@ -157,11 +157,11 @@ class SModel(CModel):
       
 class FFNet(CModel):
     model_config = {}
-    model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1/2),(1/2,'out_channels')], 
-                              'dropout': [.2, .3, .1]}
-    model_config['funnel'] = {'shape': [('in_channels',1),(1,1/2),(1/2,1/2),(1/2,1/4),
-                                        (1/4,1/4),(1/4,'out_channels')], 
-                              'dropout': [.1, .2, .3, .2, .1]}
+    model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1),(1,'out_channels')], 
+                              'dropout': [.1, .2, .3]}
+    model_config['funnel'] = {'shape': [('in_channels',1),(1,1),(1,1),
+                                        (1,1/2),(1/2,1/2),(1/2,'out_channels')], 
+                              'dropout': [.1, .2, .3, .1, .2]}
 
     def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, 
                                                           device='cuda:0', **kwargs):
@@ -171,7 +171,7 @@ class FFNet(CModel):
                                                            dropout=config['dropout'][0]))
         for i, s in enumerate(config['shape'][1:-1]):
             layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
-                                                   dropout=config['dropout'][i]))
+                                                   dropout=config['dropout'][i+1]))
         layers.append([nn.Linear(int(config['shape'][-1][0]*hidden), out_channels)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         self.device = device

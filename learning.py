@@ -53,6 +53,9 @@ class Metrics():
 
         if self.sk_metric_name == 'roc_auc_score':
             y_pred = np.apply_along_axis(softmax, 1, y_pred)
+            
+        if self.sk_metric_name == 'accuracy_score':
+            y_pred = np.argmax(y_pred, axis=1)
 
         score = self.skm(y, y_pred, **self.sk_params)
 
@@ -94,10 +97,10 @@ class Metrics():
             self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
             print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
             logs = zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log)
-            cols = ['train_loss','val_loss','lr','sk_metric']
+            cols = ['train_loss','validation_loss','learning_rate',self.sk_metric_name]
         else:
             logs = zip(self.train_loss, self.val_loss, self.lr_log)
-            cols = ['train_loss','val_loss','lr']
+            cols = ['train_loss','validation_loss','learning_rate']
             
         pd.DataFrame(logs, columns=cols).to_csv('./logs/'+self.start.strftime("%Y%m%d_%H%M"))
         self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'), self.log_plot)
@@ -192,7 +195,10 @@ class Learn():
     squeeze_y = True/False (torch.squeeze(y))
     adapt = (D_in, D_out, dropout)
     
-    dataset keywords: 'criterion_input', 'model_input', 'target'
+    the dataset output can either be a dictionary utilizing the form 
+    data = {'model_input': {},
+            'criterion_input': {'target':{}}} 
+    or an object with a feature y (data.y), the entire data object is passed to the model
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  DataLoader=DataLoader,
@@ -324,7 +330,7 @@ class Learn():
         for data in dataloader:
             i += self.bs
             if self.gpu: # overwrite the datadic with a new copy on the gpu
-                if type(data) == dict:
+                if type(data) == dict: # data can be passed as a dict or data class object
                     _data = {'model_input': {},
                              'criterion_input': {}}
                     for d in data:
@@ -339,7 +345,7 @@ class Learn():
                                 _data[d][j] = data[d][j].to('cuda:0', non_blocking=True)
                     data = _data
                     y_pred = self.model(data['model_input'])
-                else:
+                else: # ...or data class object
                     data = data.to('cuda:0', non_blocking=True)
                     y_pred = self.model(data)
                     
@@ -349,7 +355,7 @@ class Learn():
                 if type(data) == dict:
                     y = data['criterion_input']['target']
                 else: 
-                    y = data.y[:,0]
+                    y = data.y
                 if self.squeeze_y: y = squeeze(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
