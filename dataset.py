@@ -38,7 +38,7 @@ class CDataset(Dataset, ABC):
         select which features to pad
     
     """    
-    def __init__ (self, input_dict={}, transform=[], target_transform=[], 
+    def __init__ (self, input_dict=None, transform=[], target_transform=[], 
                   pad=None, pad_feats=[], flatten=False, 
                   as_tensor=True, **kwargs):
         self.input_dict = input_dict
@@ -89,31 +89,34 @@ class CDataset(Dataset, ABC):
     def __getitem__(self, i):         
         """this func feeds the model's forward().  the structure of the input_dict 
         determines the structure of the output datadict
-        keywords = 'criterion_input','embed'
+        keywords = 'criterion_input','embed','model_input'
         """
-        datadic = {}
-        for input_key in self.input_dict:
-            datadic[input_key] = {}
-            for output_key in self.input_dict[input_key]:
-                if output_key == 'embed':
-                    out = self._get_embed_idx(self.ds[i], 
-                                              self.input_dict[input_key][output_key], 
-                                              self.embed_lookup)
-                else:
-                    out = self._get_features(self.ds[i], 
-                                             self.input_dict[input_key][output_key])
-                    
-                    if input_key == 'criterion_input':
-                        for target_transform in self.target_transform:
-                            out = target_transform(out)
+        if self.input_dict == None:
+            return self.ds[i]
+        else:
+            datadic = {}
+            for input_key in self.input_dict:
+                datadic[input_key] = {}
+                for output_key in self.input_dict[input_key]:
+                    if output_key == 'embed':
+                        out = self._get_embed_idx(self.ds[i], 
+                                                  self.input_dict[input_key][output_key], 
+                                                  self.embed_lookup)
                     else:
-                        for transform in self.transform:
-                            out = transform(out)
-                        
-                    if self.as_tensor: out = as_tensor(out)
-                datadic[input_key][output_key] = out
-                
-        return datadic
+                        out = self._get_features(self.ds[i], 
+                                                 self.input_dict[input_key][output_key])
+
+                        if input_key == 'criterion_input':
+                            for target_transform in self.target_transform:
+                                out = target_transform(out)
+                        else:
+                            for transform in self.transform:
+                                out = transform(out)
+
+                        if self.as_tensor: out = as_tensor(out)
+                    datadic[input_key][output_key] = out
+
+            return datadic
     
     def _get_features(self, datadic, features):
         """select which features to load"""
