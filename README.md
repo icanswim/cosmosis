@@ -3,7 +3,7 @@ A datascience framework and tools for rapid prototyping.
 
 ## Datasets, models and learners implemented in pytorch
 * light weight, modular, extendable
-* pytorch=1.8, cuda=10.2, python=3.8
+* pytorch=2.0.1, pytorch-cuda=11.8, python=3.9
 * jupyterlab, numpy, pandas, scipy, scikit-learn, matplotlib
 * see setup_notes.txt for implementation details
 * see experiment.ipynb for examples
