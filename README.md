@@ -9,6 +9,6 @@ A datascience framework and tools for rapid prototyping.
 * see experiment.ipynb for examples
 * see repo icanswim/qchem for an example of a project utilizing cosmosis
   
-
+This is the pytorch18 branch which can be used with icanswim/qchem rdkit branch.
 
 

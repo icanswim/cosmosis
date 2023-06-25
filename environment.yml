@@ -1,4 +1,4 @@
-name: cosmo
+name: cosmo-pytorch18
 channels:
   - pytorch
   - conda-forge
@@ -21,7 +21,7 @@ dependencies:
   - brotlipy=0.7.0=py38h497a2fe_1001
   - bzip2=1.0.8=h7b6447c_0
   - c-ares=1.17.1=h27cfd23_0
-  - ca-certificates=2021.10.8=ha878542_0
+  - ca-certificates=2021.10.26=h06a4308_2
   - cached-property=1.5.2=hd8ed1ab_1
   - cached_property=1.5.2=pyha770c72_1
   - certifi=2021.10.8=py38h578d9bd_1
@@ -191,4 +191,4 @@ dependencies:
   - zipp=3.6.0=pyhd8ed1ab_0
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.9=haebb681_0
-prefix: /home/operat0r/miniconda3/envs/cosmo
+prefix: /home/operat0r/miniconda3/envs/cosmo-pytorch18
