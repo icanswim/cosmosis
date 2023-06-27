@@ -10,18 +10,14 @@ conda env create -f environment.yml
 conda activate cosmo
 jupyter lab
 
-##instructions for the manual creation of conda enviornment
+##instructions for the manual creation of conda environment
 git clone https://github.com/icanswim/cosmosis.git
 cd cosmosis
 mkdir data
 mkdir logs
 mkdir models
-conda create --name cosmo numpy pandas scipy python=3.9 -c conda-forge
+conda create --name cosmo python pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 conda activate cosmo
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-conda install jupyterlab -c conda-forge
-conda install matplotlib -c conda-forge
-conda install scikit-learn -c conda-forge
-conda install h5py -c conda-forge
-conda install git -c conda-forge
+conda install scipy pandas matplotlib scikit-learn -c conda-forge
+conda install jupyterlab h5py git -c conda-forge
 jupyter lab
