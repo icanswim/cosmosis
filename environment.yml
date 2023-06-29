@@ -27,8 +27,8 @@ dependencies:
   - brotlipy=0.7.0=py310h7f8727e_1002
   - bzip2=1.0.8=h7b6447c_0
   - c-ares=1.19.0=h5eee18b_0
-  - ca-certificates=2023.5.7=hbcca054_0
-  - certifi=2023.5.7=pyhd8ed1ab_0
+  - ca-certificates=2023.05.30=h06a4308_0
+  - certifi=2023.5.7=py310h06a4308_0
   - cffi=1.15.1=py310h5eee18b_3
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - contourpy=1.0.5=py310hdb19cb5_0
@@ -167,8 +167,8 @@ dependencies:
   - nspr=4.35=h6a678d5_0
   - nss=3.89.1=h6a678d5_0
   - numexpr=2.8.4=py310h85018f9_1
-  - numpy=1.25.0=py310h5f9d8c6_0
-  - numpy-base=1.25.0=py310hb5e798b_0
+  - numpy=1.24.3=py310h5f9d8c6_1
+  - numpy-base=1.24.3=py310hb5e798b_1
   - openh264=2.1.1=h4ff587b_0
   - openssl=3.0.9=h7f8727e_0
   - packaging=23.1=pyhd8ed1ab_0
