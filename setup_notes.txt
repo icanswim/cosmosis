@@ -6,9 +6,9 @@ cd cosmosis
 mkdir data
 mkdir logs
 mkdir models
+git checkout pytorch18
 conda env create -f environment.yml
 conda activate cosmo-pytorch18
-git checkout pytorch18
 jupyter lab
 
 ##instructions for the manual creation of conda enviornment
@@ -17,13 +17,10 @@ cd cosmosis
 mkdir data
 mkdir logs
 mkdir models
-conda create --name cosmo-pytorch18 -c conda-forge python==3.8 numpy pandas scipy
-conda activate cosmo-pytorch18
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit==10.2 -c pytorch
-conda install -c conda-forge jupyterlab
-conda install -c conda-forge matplotlib
-conda install -c conda-forge scikit-learn
-conda install -c conda-forge h5py
-conda install -c conda-forge git
 git checkout pytorch18
+conda create --name cosmo-pytorch18 -c conda-forge python=3.8 numpy pandas scipy
+conda activate cosmo-pytorch18
+conda install conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=10.2 -c pytorch
+conda install -c conda-forge jupyterlab matplotlib scikit-learn
+conda install -c conda-forge h5py git
 jupyter lab
