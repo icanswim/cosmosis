@@ -21,29 +21,22 @@ class CDataset(Dataset, ABC):
                                                                  'embed': ['feature_3']},
                                                  'criterion_input': {'target': ['feature_2'],
                                                                      'embed': ['feature_4']}},
-                                  'transform': [DummyTransform(), DummyTransformTwo()],
-                                  'target_transform': [DummyTransform()],
-                                  'pad': (5,),
-                                  'pad_feats': ['feature_5','feature_4'],
+                                  'transforms': {'feature_1': [Pad(5), SomeTransform()],
+                                                 'feature_3': [SomeTransform2()]},
                                   'boom': 'bang'}}
-        structure of the input_dict determines the structure of the output datadict
+                                  
+        structure of the input_dict determines the structure of the output data_dict
         keywords: 'criterion_input','model_input','embed','target'
         
     ds_idx = [1,2,3,...]  
         a list of indices or keys to be passed to the Sampler and Dataloader
-    transform/target_transform = [Transformer_Class(),...] 
-    pad = int/None
-        each feature will be padded to this length
-    pad_feats = ['feature','feature'...]
-        select which features to pad
+    transforms = {'feature_1': [Pad(5)]}
     
     """    
-    def __init__ (self, input_dict=None, transform=[], target_transform=[], 
-                  pad=None, pad_feats=[], flatten=False, 
-                  as_tensor=True, **kwargs):
+    def __init__ (self, input_dict=None, transforms={}, 
+                      flatten=False, as_tensor=True, **kwargs):
         self.input_dict = input_dict
-        self.transform, self.target_transform = transform, target_transform
-        self.pad, self.pad_feats = pad, pad_feats
+        self.transforms = transforms
         self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)        
         if not hasattr(self, 'ds_idx'):
@@ -105,58 +98,50 @@ class CDataset(Dataset, ABC):
                     else:
                         out = self._get_features(self.ds[i], 
                                                  self.input_dict[input_key][output_key])
-
-                        if input_key == 'criterion_input':
-                            for target_transform in self.target_transform:
-                                out = target_transform(out)
-                        else:
-                            for transform in self.transform:
-                                out = transform(out)
-
-                        if self.as_tensor: out = as_tensor(out)
                     datadic[input_key][output_key] = out
-
+                    
             return datadic
     
     def _get_features(self, datadic, features):
-        """select which features to load"""
+        """load, transform then concatenate selected features"""
         data = []
-        for f in features:                
+        for f in features:
             out = datadic[f]
-            if f in self.pad_feats and self.pad != None:
-                if len(self.pad) == 1:
-                    out = np.pad(out, (0, (self.pad[0] - out.shape[0])))
-                elif len(self.pad) == 2:
-                    out = np.pad(out, ((0, (self.pad[0] - out.shape[0])), (0,(self.pad[1] - out.shape[1]))))       
-            if self.flatten:
-                out = np.reshape(out, -1)
+            if f in self.transforms:
+                transforms = self.transforms[f]
+                for T in transforms:
+                    out = T(out) 
             data.append(out)
         return np.concatenate(data)
         
     def _get_embed_idx(self, datadic, embeds, embed_lookup):
         """convert a list of 1 or more categorical features to an array of ints which can then
         be fed to an embedding layer
-        datadic = {'feature_name': 'feature'}
+        datadic = {'feature_name': feature}
         embeds = ['feature_name','feature_name']
         embed_lookup = {'feature_name': {'feature': int, '0': 0}}
             dont forget an embedding for the padding (padding_idx)
-        pad_feats = ['feature_name','feature_name']
         """
         embed_idx = []
         for e in embeds:
             out = datadic[e]
-            if e in self.pad_feats and self.pad != None:
-                out = np.pad(out, (0, (self.pad[0] - out.shape[0])))
             idx = []        
             for i in np.reshape(out, -1).tolist():
                 idx.append(np.reshape(np.asarray(embed_lookup[e][i]), -1).astype('int64'))
-            idx = np.concatenate(idx)
-            if self.as_tensor:  as_tensor(idx)
-            embed_idx.append(idx)
-            
+            embed_idx.append(np.concatenate(idx))
         return embed_idx
     
-    
+class Pad():
+    """A padding transform class"""
+    def __init__(self, pad):
+        self.pad = pad
+    def __call__(self, arr):
+        if len(self.pad) == 1:
+            out = np.pad(arr, (0, (self.pad[0] - arr.shape[0])))
+        elif len(self.pad) == 2:
+            out = np.pad(arr, ((0, (self.pad[0] - arr.shape[0])), (0, (self.pad[1] - arr.shape[1]))))
+        return out
+        
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
     def __add__(self, other):

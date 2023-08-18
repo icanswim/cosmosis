@@ -283,7 +283,7 @@ class Learn():
                 
             self.metrics.report()  
             
-        else: # no Criterion implies inference mode
+        else: #no Criterion implies inference mode
             with no_grad():
                 self.run('infer')
         
@@ -330,7 +330,7 @@ class Learn():
         for data in dataloader:
             i += self.bs
             if self.gpu: # overwrite the datadic with a new copy on the gpu
-                if type(data) == dict: # data can be passed as a dict or data class object
+                if type(data) == dict: #data can be passed as a dict or data class object
                     _data = {'model_input': {},
                              'criterion_input': {}}
                     for d in data:
@@ -345,7 +345,7 @@ class Learn():
                                 _data[d][j] = data[d][j].to('cuda:0', non_blocking=True)
                     data = _data
                     y_pred = self.model(data['model_input'])
-                else: # ...or data class object
+                else: #if data class object
                     data = data.to('cuda:0', non_blocking=True)
                     y_pred = self.model(data)
                     
