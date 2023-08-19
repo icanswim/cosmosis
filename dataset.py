@@ -31,13 +31,12 @@ class CDataset(Dataset, ABC):
     ds_idx = [1,2,3,...]  
         a list of indices or keys to be passed to the Sampler and Dataloader
     transforms = {'feature_1': [Pad(5)]}
+        keys are the feature name or index, values are a list of transforms in order of operation
     
     """    
-    def __init__ (self, input_dict=None, transforms={}, 
-                      flatten=False, as_tensor=True, **kwargs):
+    def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
         self.transforms = transforms
-        self.flatten, self.as_tensor = flatten, as_tensor
         self.ds = self.load_data(**kwargs)        
         if not hasattr(self, 'ds_idx'):
             try:
@@ -51,7 +50,6 @@ class CDataset(Dataset, ABC):
     @abstractmethod
     def load_data(self, kwargs):
         """
-        dont forget an embedding for the padding '0' (padding_idx)
         self.ds_idx = [1,2,5,17,...] #some subset
         if no ds_idx provided the entire dataset will be used, 
         optionally this could be passed to the Selector/Sampler class in its sample_params
@@ -67,8 +65,8 @@ class CDataset(Dataset, ABC):
                        'feature_4': np.asarray(['d','a','d']),
                        'feature_5': np.asarray([1.2])}}
         
-        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
-                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0}}
+        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4},
+                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3}}
 
         return datadic
     
@@ -88,48 +86,45 @@ class CDataset(Dataset, ABC):
             return self.ds[i]
         else:
             datadic = {}
+            
             for input_key in self.input_dict:
                 datadic[input_key] = {}
                 for output_key in self.input_dict[input_key]:
-                    if output_key == 'embed':
-                        out = self._get_embed_idx(self.ds[i], 
-                                                  self.input_dict[input_key][output_key], 
-                                                  self.embed_lookup)
-                    else:
-                        out = self._get_features(self.ds[i], 
-                                                 self.input_dict[input_key][output_key])
+                    out = self._get_features(self.ds[i], self.input_dict[input_key][output_key])
                     datadic[input_key][output_key] = out
-                    
             return datadic
     
-    def _get_features(self, datadic, features):
+    def _get_features(self, data, features):
         """load, transform then concatenate selected features"""
-        data = []
+        output = []
         for f in features:
-            out = datadic[f]
+            if type(data) == dict: 
+                out = data[f]
+            else:
+                out = getattr(data, f)
+              
             if f in self.transforms:
                 transforms = self.transforms[f]
                 for T in transforms:
-                    out = T(out) 
-            data.append(out)
-        return np.concatenate(data)
+                    out = T(out)   
+            output.append(out)  
+        return np.concatenate(output)
         
-    def _get_embed_idx(self, datadic, embeds, embed_lookup):
-        """convert a list of 1 or more categorical features to an array of ints which can then
-        be fed to an embedding layer
-        datadic = {'feature_name': feature}
-        embeds = ['feature_name','feature_name']
-        embed_lookup = {'feature_name': {'feature': int, '0': 0}}
-            dont forget an embedding for the padding (padding_idx)
-        """
-        embed_idx = []
-        for e in embeds:
-            out = datadic[e]
-            idx = []        
-            for i in np.reshape(out, -1).tolist():
-                idx.append(np.reshape(np.asarray(embed_lookup[e][i]), -1).astype('int64'))
-            embed_idx.append(np.concatenate(idx))
-        return embed_idx
+class EmbedLookup():
+    """A transform which converts a list categorical features to an array of ints which
+    can then be fed to an embedding layer
+    
+    arr = numpy array or list of categorical values
+    embed_lookup = {'feature': int}
+    """
+    def __init__(self, embed_lookup={}):
+        self.embed_lookup = embed_lookup
+
+    def __call__(self, arr):
+        idx = []
+        for i in np.reshape(arr, -1).tolist():
+            idx.append(np.reshape(np.asarray(self.embed_lookup[i]), -1).astype('int64'))
+        return idx
     
 class Pad():
     """A padding transform class"""
@@ -173,6 +168,16 @@ class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __call__(self, arr):
         return as_tensor(arr)
+
+class Flatten():
+    """Transforms a numpy array"""
+    def __call__(self, arr):
+        return np.reshape(arr, -1)
+    
+class Concat():
+    """Transforms a list of numpy arrays"""
+    def __call__(self, data):
+        return np.concatenate(data)
     
 class Transpose():
     """Transforms a numpy array"""
@@ -191,7 +196,6 @@ class DType():
         
     def __call__(self, arr):
         return arr.astype(self.datatype)
-    
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
