@@ -102,14 +102,15 @@ class CDataset(Dataset, ABC):
                 out = data[f]
             else:
                 out = getattr(data, f)
-              
+
             if f in self.transforms:
-                transforms = self.transforms[f]
+                transforms = self.transforms[f] #get the list of transforms for this feature
                 for T in transforms:
-                    out = T(out)   
-            output.append(out)  
-        return np.concatenate(output)
-        
+                    out = T(out)
+            output.append(out)
+        if len(output) == 1: return output[0]
+        else: return np.concatenate(output)
+    
 class EmbedLookup():
     """A transform which converts a list categorical features to an array of ints which
     can then be fed to an embedding layer
@@ -157,7 +158,7 @@ class ImageDatasetStats():
             if i % 10000 == 0:
                 print('images processed: {}'.format(i))
         print('mean: {}, stddev: {}'.format(self.stats.mean, self.stats.stddev))
-                
+
 class LoadImage():
     """A transformer for use with image file based datasets
     transforms (loads) an image filename into a PIL image"""
@@ -169,6 +170,14 @@ class AsTensor():
     def __call__(self, arr):
         return as_tensor(arr)
 
+class Reshape():
+    """Transforms a numpy array"""
+    def __init__(self, shape):
+        self.shape = shape
+        
+    def __call__(self, arr):
+        return np.reshape(arr, self.shape)
+    
 class Flatten():
     """Transforms a numpy array"""
     def __call__(self, arr):
@@ -184,10 +193,15 @@ class Transpose():
     def __call__(self, arr):
         return np.transpose(arr)
 
-class Squeeze():
+class SqueezeT():
     """Transforms a torch array"""
     def __call__(self, arr):
         return squeeze(arr)
+    
+class SqueezeN():
+    """Transforms a numpy array"""
+    def __call__(self, arr):
+        return np.squeeze(arr)
     
 class DType():
     """Transforms a numpy array"""

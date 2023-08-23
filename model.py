@@ -158,19 +158,23 @@ class SModel(CModel):
 class FFNet(CModel):
     model_config = {}
     model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1),(1,'out_channels')], 
-                              'dropout': [.1, .2, .3]}
+                              'dropout': [.1, .2, .3],
+                              'batch_norm': None}
     model_config['funnel'] = {'shape': [('in_channels',1),(1,1),(1,1),
                                         (1,1/2),(1/2,1/2),(1/2,'out_channels')], 
-                              'dropout': [.1, .2, .3, .1, .2]}
+                              'dropout': [.1, .2, .3, .1, .2],
+                              'batch_norm': None}
 
     def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, **kwargs):
         config = FFNet.model_config[model_name]
         layers = []
         layers.append(self.ff_unit(in_channels, int(config['shape'][0][1]*hidden), 
-                                                           dropout=config['dropout'][0]))
+                                                           dropout=config['dropout'][0],
+                                                           batch_norm=config['batch_norm']))
         for i, s in enumerate(config['shape'][1:-1]):
             layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
-                                                   dropout=config['dropout'][i+1]))
+                                                   dropout=config['dropout'][i+1],
+                                                   batch_norm=config['batch_norm']))
         layers.append([nn.Linear(int(config['shape'][-1][0]*hidden), out_channels)])
         self.layers = [l for ffu in layers for l in ffu] # flatten
         

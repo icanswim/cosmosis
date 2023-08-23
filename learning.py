@@ -192,7 +192,8 @@ class Learn():
     TODO: early stopping/checkpoints
     load_model = None/'saved_model.pth'/'saved_model.pk'
     load_embed = None/'model_name'
-    squeeze_y = True/False (torch.squeeze(y))
+    squeeze_y_pred = True/False (torch.squeeze(y_pred)) 
+        squeeze the model output
     adapt = (D_in, D_out, dropout)
     
     the dataset output can either be a dictionary utilizing the form 
@@ -206,11 +207,11 @@ class Learn():
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
                  adapt=None, load_model=None, load_embed=None, save_model=False,
-                 batch_size=10, epochs=1, squeeze_y=False, gpu=True):
+                 batch_size=10, epochs=1, squeeze_y_pred=False, gpu=True):
         
         self.gpu = gpu
         self.bs = batch_size
-        self.squeeze_y = squeeze_y
+        self.squeeze_y_pred = squeeze_y_pred
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         self.DataLoader = DataLoader
@@ -348,7 +349,8 @@ class Learn():
                 else: #if data class object
                     data = data.to('cuda:0', non_blocking=True)
                     y_pred = self.model(data)
-                    
+                if self.squeeze_y_pred: y_pred = squeeze(y_pred)
+                
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
@@ -356,7 +358,6 @@ class Learn():
                     y = data['criterion_input']['target']
                 else: 
                     y = data.y
-                if self.squeeze_y: y = squeeze(y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
