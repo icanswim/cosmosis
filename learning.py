@@ -199,7 +199,7 @@ class Learn():
     the dataset output can either be a dictionary utilizing the form 
     data = {'model_input': {},
             'criterion_input': {'target':{}}} 
-    or an object with a feature y (data.y), the entire data object is passed to the model
+    or an object with a feature 'target' (data.target), the entire data object is passed to the model
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  DataLoader=DataLoader,
@@ -207,11 +207,12 @@ class Learn():
                  ds_params={}, model_params={}, sample_params={},
                  opt_params={}, sched_params={}, crit_params={}, metrics_params={}, 
                  adapt=None, load_model=None, load_embed=None, save_model=False,
-                 batch_size=10, epochs=1, squeeze_y_pred=False, gpu=True):
+                 batch_size=10, epochs=1, squeeze_y_pred=False, gpu=True, target='y'):
         
         self.gpu = gpu
         self.bs = batch_size
         self.squeeze_y_pred = squeeze_y_pred
+        self.target = target
         self.ds_params = ds_params
         self.dataset_manager(Datasets, Sampler, ds_params, sample_params)
         self.DataLoader = DataLoader
@@ -357,7 +358,7 @@ class Learn():
                 if type(data) == dict:
                     y = data['criterion_input']['target']
                 else: 
-                    y = data.y
+                    y = getattr(data, self.target)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
