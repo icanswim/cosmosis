@@ -16,6 +16,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
+    
     ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_5'],
                                                                  'X2': ['feature_5'],
                                                                  'embed': ['feature_3']},
@@ -29,10 +30,10 @@ class CDataset(Dataset, ABC):
         keywords: 'criterion_input','model_input','embed','target'
         
     ds_idx = [1,2,3,...]  
-        a list of indices or keys to be passed to the Sampler and Dataloader
-    transforms = {'feature_1': [Pad(5)]}
+        a list of indices or keys (ints or strings) to be passed to the Sampler and Dataloader
+        
+    transforms = {'feature_1': [Pad(5), Reshape((1,-1))]}
         keys are the feature name or index, values are a list of transforms in order of operation
-    
     """    
     def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
@@ -78,8 +79,9 @@ class CDataset(Dataset, ABC):
         return len(self.ds_idx)
     
     def __getitem__(self, i):         
-        """this func feeds the model's forward().  the structure of the input_dict 
-        determines the structure of the output datadict
+        """this func feeds the model's forward().  
+        the structure of the input_dict determines the structure of the output datadict
+        if no input_dict is provided the dataset's native __getitem__() is used
         keywords = 'criterion_input','embed','model_input'
         """
         if self.input_dict == None:
@@ -210,6 +212,13 @@ class DType():
         
     def __call__(self, arr):
         return arr.astype(self.datatype)
+    
+class Index():
+    """Transforms a numpy array"""
+    def __init__(self, i):
+        self.i = i
+    def __call__(self, arr):
+        return np.reshape(arr[self.i], (1,))
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
