@@ -108,11 +108,11 @@ class CModel(nn.Module):
             self.layers.insert(0, l)
             
     def ff_unit(self, in_channels, out_channels, activation=nn.ReLU, 
-                                batch_norm=nn.BatchNorm1d, dropout=.2):
+                                batch_norm=True, dropout=.2):
         ffu = []
         ffu.append(nn.Linear(in_channels, out_channels))
+        if batch_norm: ffu.append(nn.BatchNorm1d(out_channels))
         if activation is not None: ffu.append(activation())
-        if batch_norm is not None: ffu.append(batch_norm(out_channels))
         if dropout is not None:  ffu.append(nn.Dropout(dropout))
         
         return nn.Sequential(*ffu)
@@ -159,28 +159,30 @@ class FFNet(CModel):
     model_config = {}
     model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1),(1,'out_channels')], 
                               'dropout': [.1, .2, .3],
-                              'batch_norm': nn.BatchNorm1d,
                               'activation': nn.ReLU}
     model_config['funnel'] = {'shape': [('in_channels',1),(1,1),(1,1),
                                         (1,1/2),(1/2,1/2),(1/2,'out_channels')], 
                               'dropout': [.1, .2, .3, .1, .2],
-                              'batch_norm': nn.BatchNorm1d,
                               'activation': nn.ReLU}
 
     def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, **kwargs):
+        
         config = FFNet.model_config[model_name]
         self.layers = []
+        
         self.layers.append(self.ff_unit(in_channels, int(config['shape'][0][1]*hidden),                                                                   dropout=config['dropout'][0],
-                                        batch_norm=config['batch_norm'],
+                                        batch_norm=True,
                                         activation=config['activation']))
+        
         for i, s in enumerate(config['shape'][1:-1]):
             self.layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
                                             dropout=config['dropout'][i+1],
-                                            batch_norm=config['batch_norm'],
+                                            batch_norm=True,
                                             activation=config['activation']))
+            
         self.layers.append(self.ff_unit(int(config['shape'][-1][0]*hidden), out_channels,
                                         dropout=None,
-                                        batch_norm=None,
+                                        batch_norm=False,
                                         activation=None))
         
         print('FFNet model loaded...')

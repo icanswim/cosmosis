@@ -86,15 +86,14 @@ class CDataset(Dataset, ABC):
         """
         if self.input_dict == None:
             return self.ds[i]
-        else:
-            datadic = {}
-            
-            for input_key in self.input_dict:
-                datadic[input_key] = {}
-                for output_key in self.input_dict[input_key]:
-                    out = self._get_features(self.ds[i], self.input_dict[input_key][output_key])
-                    datadic[input_key][output_key] = out
-            return datadic
+
+        datadic = {}
+        for input_key in self.input_dict:
+            datadic[input_key] = {}
+            for output_key in self.input_dict[input_key]:
+                out = self._get_features(self.ds[i], self.input_dict[input_key][output_key])
+                datadic[input_key][output_key] = out
+        return datadic
     
     def _get_features(self, data, features):
         """load, transform then concatenate selected features"""
@@ -110,6 +109,7 @@ class CDataset(Dataset, ABC):
                 for T in transforms:
                     out = T(out)
             output.append(out)
+            
         if len(output) == 1: return output[0]
         else: return np.concatenate(output)
     
@@ -218,7 +218,7 @@ class Index():
     def __init__(self, i):
         self.i = i
     def __call__(self, arr):
-        return np.reshape(arr[self.i], (1,))
+        return np.reshape(arr[:,self.i], -1)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
