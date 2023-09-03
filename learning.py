@@ -114,8 +114,7 @@ class Metrics():
 
 class Selector(Sampler):
     """splits = (train_split,) remainder is val_split or 
-                (train_split,val_split) remainder is test_split or 
-                None
+                (train_split,val_split) remainder is test_split or None
     """
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
                  splits=(.7,.15), set_seed=False, subset=False):
@@ -195,7 +194,7 @@ class Learn():
     squeeze_y_pred = True/False (torch.squeeze(y_pred)) 
         squeeze the model output
     adapt = (D_in, D_out, dropout)
-    
+        prepends a trainable linear layer
     the dataset output can either be a dictionary utilizing the form 
     data = {'model_input': {},
             'criterion_input': {'target':{}}} 
