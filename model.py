@@ -78,24 +78,27 @@ class CModel(nn.Module):
         embed = a list of lists (one for each feature) of torch.cuda tensor int64 
             indices (keys) to be fed to the embedding layer
         """
-        if 'X' in data: 
-            X = data['X']
+        if type(data) == dict:
+            if 'X' in data: 
+                X = data['X']
 
-        if 'embed' in data:
-            embedded = []
-            for e, idx in enumerate(data['embed']):
-                out = self.embeddings[e](idx)
-                embedded.append(flatten(out, start_dim=1))
+            if 'embed' in data:
+                embedded = []
+                for e, idx in enumerate(data['embed']):
+                    out = self.embeddings[e](idx)
+                    embedded.append(flatten(out, start_dim=1))
 
-            if len(embedded) > 1:
-                embedded = cat(embedded, dim=1)
-            else:
-                embedded = embedded[0]
+                if len(embedded) > 1:
+                    embedded = cat(embedded, dim=1)
+                else:
+                    embedded = embedded[0]
 
-            if 'X' in data:
-                X = cat([X, embedded], dim=1)
-            else:  
-                X = embedded
+                if 'X' in data:
+                    X = cat([X, embedded], dim=1)
+                else:  
+                    X = embedded
+        else:
+            X = data
    
         for l in self.layers:
             X = l(X)
