@@ -195,10 +195,12 @@ class Learn():
         squeeze the model output
     adapt = (D_in, D_out, dropout)
         prepends a trainable linear layer
+        
     the dataset output can either be a dictionary utilizing the form 
     data = {'model_input': {},
             'criterion_input': {'target':{}}} 
-    or an object with a feature 'target' (data.target), the entire data object is passed to the model
+    or an object with a feature 'target' (data.target)
+    the entire data object is passed to the model
     """
     def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
                  DataLoader=DataLoader,

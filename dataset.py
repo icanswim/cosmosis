@@ -34,6 +34,9 @@ class CDataset(Dataset, ABC):
         
     transforms = {'feature_1': [Pad(5), Reshape((1,-1))]}
         keys are the feature name or index, values are a list of transforms in order of operation
+        
+    output should be a single object (dict, Data, tensor) which is parsed in Learn() and then again
+    in the CModel()
     """    
     def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
@@ -227,7 +230,6 @@ class TVDS(CDataset):
     """
     def __init__(self, **kwargs):
         print('creating torch vision {} dataset...'.format(kwargs['dataset']))
-        
         super().__init__(**kwargs)
         
     def __getitem__(self, i):
