@@ -17,14 +17,15 @@ from sklearn import metrics
 
 
 class Metrics():
-    #TODO checkpointing and early stopping
+
     def __init__(self, report_interval=10, sk_metric_name=None, 
-                     log_plot=False, sk_params={}):
+                     log_plot=False, min_lr=.00125, sk_params={}):
         
         self.start = datetime.now()
         self.report_time = self.start
         self.report_interval = report_interval
         self.log_plot = log_plot
+        self.min_lr = min_lr
         
         self.epoch, self.e_loss, self.predictions = 0, [], []
         self.train_loss, self.val_loss, self.lr_log = [], [], []
@@ -78,9 +79,9 @@ class Metrics():
     def log(self, message):
         logging.info(message)
         
-    def status_report(self):
-        elapsed = datetime.now() - self.report_time
-        if elapsed.total_seconds() > self.report_interval or self.epoch % 10 == 0:
+    def status_report(self, now=False):
+        
+        def print_report():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
@@ -88,6 +89,14 @@ class Metrics():
                 print('sklearn train metric: {}, sklearn validation metric: {}'.format(
                                                     self.sk_train_log[-1], self.sk_val_log[-1]))
             self.report_time = datetime.now()
+        
+        if now:
+            print_report()
+        else:
+            elapsed = datetime.now() - self.report_time
+            if elapsed.total_seconds() > self.report_interval or self.epoch % 10 == 0:
+                print_report()
+        
         
     def report(self):
         elapsed = datetime.now() - self.start
@@ -188,7 +197,7 @@ class Learn():
         if 3 DS are given first is train second is val third is test
         
     Criterion = None implies inference mode
-    TODO: early stopping/checkpoints
+    
     load_model = None/'saved_model.pth'/'saved_model.pk'
     load_embed = None/'model_name'
     squeeze_y_pred = True/False (torch.squeeze(y_pred)) 
@@ -279,7 +288,11 @@ class Learn():
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
-                    self.run('val')  
+                    self.run('val')
+                    if e > 1 and  self.metrics.lr_log[-1] < self.metrics.min_lr:
+                        self.metrics.status_report(now=True)
+                        print('early stopping!  learning rate is below the set minimum...')
+                        break
                 
             with no_grad():
                 self.run('test')
@@ -380,8 +393,7 @@ class Learn():
             self.scheduler.step(e_loss/i)
             self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
             self.metrics.status_report()
-        
-        
+            
     def dataset_manager(self, Datasets, Sampler, ds_params, sample_params):
     
         if len(Datasets) == 1:
