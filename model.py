@@ -32,7 +32,8 @@ class CModel(nn.Module):
         self.device = 'cuda:0'
         if 'device' in model_params:  
             self.device = model_params['device']
-            
+        
+        self.softmax = None
         self.build(**model_params)
         
         if 'embed_params' in model_params:
@@ -105,6 +106,9 @@ class CModel(nn.Module):
         for l in self.layers:
             X = l(X)
             
+        if self.softmax is not None:
+            X = getattr(F, self.softmax)(X, dim=1)
+
         return X
     
     def adapt(self, in_channels, out_channels, dropout):
@@ -170,7 +174,8 @@ class FFNet(CModel):
                               'dropout': [.1, .2, .3, .1, .2],
                               'activation': nn.ReLU}
 
-    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, **kwargs):
+    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, 
+                      softmax=None, **kwargs):
         
         config = FFNet.model_config[model_name]
         self.layers = []
@@ -189,6 +194,8 @@ class FFNet(CModel):
                                         dropout=None,
                                         batch_norm=False,
                                         activation=None))
+        
+        self.softmax = softmax
         
         print('FFNet model loaded...')
         
