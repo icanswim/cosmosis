@@ -46,9 +46,7 @@ class Metrics():
         print('inference {} complete and saved to csv...'.format(self.start))
 
     def sk_metric(self, flag):
-
-        def softmax(x): return np.exp(x)/sum(np.exp(x))
-    
+        """TODO multiple sk metrics"""
         y = np.concatenate(self.sk_y)
         y_pred = np.concatenate(self.sk_pred)
 
