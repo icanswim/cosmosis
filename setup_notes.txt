@@ -16,12 +16,12 @@ cd cosmosis
 mkdir data
 mkdir logs
 mkdir models
-conda create --name cosmo -c pytorch -c nvidia python=3.10 pytorch torchvision torchaudio pytorch-cuda=11.7
+conda create --name cosmo
 conda activate cosmo
+conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
 conda install -c conda-forge matplotlib
 conda install -c conda-forge scipy pandas scikit-learn
 conda install -c conda-forge jupyterlab h5py git
-conda instsll -c conda-forge numpy=1.24
+conda install -c conda-forge numpy
 jupyter lab
-
 

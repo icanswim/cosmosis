@@ -47,8 +47,13 @@ class Metrics():
 
     def sk_metric(self, flag):
         """TODO multiple sk metrics"""
+        def softmax(x): return np.exp(x)/sum(np.exp(x))
+        
         y = np.concatenate(self.sk_y)
         y_pred = np.concatenate(self.sk_pred)
+
+        if self.sk_metric_name == 'roc_auc_score':
+            y_pred = np.apply_along_axis(softmax, 1, y_pred)
 
         if self.sk_metric_name == 'accuracy_score':
             y_pred = np.argmax(y_pred, axis=1)
@@ -299,17 +304,19 @@ class Learn():
                 self.run('infer')
         
         if save_model:
+            if type(save_model) == str:
+                model_name = save_model
+            else:
+                model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
             if adapt: 
-                save(self.model, './models/{}.pth'.format(
-                            self.metrics.start.strftime("%Y%m%d_%H%M")))
+                save(self.model, './models/{}.pth'.format(model_name))
             else: 
-                save(self.model.state_dict(), './models/{}.pth'.format(
-                            self.metrics.start.strftime("%Y%m%d_%H%M")))
+                save(self.model.state_dict(), './models/{}.pth'.format(model_name))
+                     
             if hasattr(self.model, 'embeddings'):
                 for i, embedding in enumerate(self.model.embeddings):
                     weight = embedding.weight.detach().cpu().numpy()
-                    np.save('./models/{}_{}_embedding_weight.npy'.format(
-                        self.metrics.start.strftime("%Y%m%d_%H%M"), i), weight)
+                    np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, i), weight)
         
     def run(self, flag): 
         e_loss, e_sk, i = 0, 0, 0
