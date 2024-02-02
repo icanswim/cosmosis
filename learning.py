@@ -56,10 +56,10 @@ class Metrics():
         y = np.concatenate(self.sk_y)
         y_pred = np.concatenate(self.sk_pred)
 
-        if self.sk_metric_name == 'roc_auc_score':
+        if self.sk_metric_name == 'roc_auc_score' and y_pred.ndim == 2:
             y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
 
-        if self.sk_metric_name == 'accuracy_score':
+        if self.sk_metric_name == 'accuracy_score' and y_pred.ndim == 2:
             y_pred = np.argmax(y_pred, axis=1)
 
         score = self.skm(y, y_pred, **self.sk_params)
@@ -100,7 +100,6 @@ class Metrics():
             elapsed = datetime.now() - self.report_time
             if elapsed.total_seconds() > self.report_interval or self.epoch % 10 == 0:
                 print_report()
-        
         
     def report(self):
         elapsed = datetime.now() - self.start
