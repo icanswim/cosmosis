@@ -98,6 +98,7 @@ class CModel(nn.Module):
                     X = cat([X, embedded], dim=1)
                 else:  
                     X = embedded
+                    
         elif hasattr(data, 'X'):
             X = data.X
         else:
