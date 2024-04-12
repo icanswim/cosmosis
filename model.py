@@ -67,6 +67,13 @@ class CModel(nn.Module):
                 nn.init.constant_(m.bias, 0)
         
     def embedding_layer(self, embed_params, device):
+        """voc = int (vocabulary size)
+        vec = int (embedding dimension length(
+        padding_idx = 0 (the token used for padding)
+        trainable = True/False (feed gradient back to the embedding)
+
+        model_params =  {'embed_params': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)}
+        """
         embeddings = [nn.Embedding(voc, vec, padding_idx).to(device) \
                       for _, voc, vec, padding_idx, _ in embed_params]
         for i, e in enumerate(embed_params):

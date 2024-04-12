@@ -130,7 +130,7 @@ class EmbedLookup():
         idx = []
         for i in np.reshape(arr, -1).tolist():
             idx.append(np.reshape(np.asarray(self.embed_lookup[i]), -1).astype('int64'))
-        return np.concatenate(idx)
+        return [np.hstack(idx)]
     
 class Pad():
     """A padding transform class"""
