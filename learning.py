@@ -345,7 +345,7 @@ class Learn():
         
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
-                                     num_workers=8, pin_memory=True, 
+                                     num_workers=0, pin_memory=True, 
                                      drop_last=drop_last)
        
         for data in dataloader:

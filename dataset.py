@@ -132,16 +132,12 @@ class EmbedLookup():
             idx.append(np.reshape(np.asarray(self.embed_lookup[i]), -1).astype('int64'))
         return [np.hstack(idx)]
     
-class Pad():
-    """A padding transform class"""
+class Pad1d():
+    """Transforms a numpy array"""
     def __init__(self, pad):
         self.pad = pad
     def __call__(self, arr):
-        if len(self.pad) == 1:
-            out = np.pad(arr, (0, (self.pad[0] - arr.shape[0])))
-        elif len(self.pad) == 2:
-            out = np.pad(arr, ((0, (self.pad[0] - arr.shape[0])), (0, (self.pad[1] - arr.shape[1]))))
-        return out
+        return np.pad(arr, (0, (self.pad - arr.shape[0])))
         
 class ImStat(ImageStat.Stat):
     """A class for calculating a PIL image mean and std dev"""
