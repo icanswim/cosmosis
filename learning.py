@@ -252,14 +252,9 @@ class Learn():
         
         if load_embed is not None:
             for i, embedding in enumerate(model.embeddings):
-                try:
-                    weight = np.load('./models/{}_{}_embedding_weight.npy'.format(
-                                                                            load_embed, i))
-                    embedding.from_pretrained(from_numpy(weight), 
-                                              freeze=model_params['embeds'][i][4])
-                    print('loading embedding weights...')
-                except:
-                    print('no embedding weights found.  initializing... ')
+                weight = np.load('./models/{}_{}_embedding_weight.npy'.format(load_embed, i))
+                embedding.from_pretrained(from_numpy(weight), freeze=model_params['embed_params'][i][4])
+            print('loading embedding weights...')
                     
         if adapt is not None: model.adapt(*adapt)
         

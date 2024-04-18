@@ -113,7 +113,8 @@ class CDataset(Dataset, ABC):
                     out = T(out)
             output.append(out)
             
-        if len(output) == 1: return output[0]
+        if len(output) == 1: return output[0] 
+        elif type(output[0]) == list:  return output
         else: return np.concatenate(output)
     
 class EmbedLookup():
