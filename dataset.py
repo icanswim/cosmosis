@@ -118,11 +118,11 @@ class CDataset(Dataset, ABC):
         else: return np.concatenate(output)
     
 class EmbedLookup():
-    """A transform which converts a list categorical features to an array of ints which
+    """A transform which converts a list of categorical features to an array of ints which
     can then be fed to an embedding layer
     
     arr = numpy array or list of categorical values
-    embed_lookup = {'feature': int}
+    embed_lookup = {'feature': int, '0': 0} # 0 is padding value
     """
     def __init__(self, embed_lookup={}):
         self.embed_lookup = embed_lookup
@@ -171,7 +171,12 @@ class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __call__(self, arr):
         return as_tensor(arr)
-
+        
+class AsSparse():
+    """Transforms a numpy array to a torch sparse tensor"""
+    def __call__(self, arr):
+        return as_tensor(arr).to_sparse()
+        
 class Reshape():
     """Transforms a numpy array"""
     def __init__(self, shape):
@@ -219,6 +224,13 @@ class Index():
         self.i = i
     def __call__(self, arr):
         return np.reshape(arr[:,self.i], -1)
+
+class ExpandN():
+    """Transforms a numpy array"""
+    def __init__(self, axis=0):
+        self.axis = axis
+    def __call__(self ,arr):
+        return np.expand_dims(arr, axis=self.axis)
     
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
