@@ -31,7 +31,7 @@ class Metrics():
         
         self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
         self.skm, self.sk_train_log, self.sk_val_log = None, [], []
-        self.sk_y, self.sk_pred = [], []
+        self.sk_y, self.last_y, self.sk_pred, self.last_pred = [], [], [], []
         if self.sk_metric_name is not None:
             self.skm = getattr(metrics, self.sk_metric_name)
             
@@ -46,6 +46,7 @@ class Metrics():
 
     def sk_metric(self, flag):
         """TODO multiple sk metrics"""
+    
         def softmax(x): return np.exp(x)/sum(np.exp(x))
 
         def softmax_overflow(x):
@@ -57,18 +58,19 @@ class Metrics():
         y_pred = np.concatenate(self.sk_pred)
 
         if self.sk_metric_name == 'roc_auc_score' and y_pred.ndim == 2:
-            y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
-
+            y_pred = np.apply_along_axis(softmax, 1, y_pred)
+        
         if self.sk_metric_name == 'accuracy_score' and y_pred.ndim == 2:
             y_pred = np.argmax(y_pred, axis=1)
 
-        score = self.skm(y, y_pred, **self.sk_params)
+        if self.sk_metric_name is not None:
+            score = self.skm(y, y_pred, **self.sk_params)
+            if flag == 'train':
+                self.sk_train_log.append(score)
+            else:
+                self.sk_val_log.append(score)
 
-        if flag == 'train':
-            self.sk_train_log.append(score)
-        else:
-            self.sk_val_log.append(score)
-
+        self.last_y, self.last_pred = y[-5:], y_pred[-5:]
         self.sk_y, self.sk_pred = [], []
         
     def loss(self, flag, loss):
@@ -86,9 +88,12 @@ class Metrics():
     def status_report(self, now=False):
         
         def print_report():
+            print('\n...........................')
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
+            print('last 5 targets: \n{}'.format(self.last_y))
+            print('last 5 predictions: \n{}'.format(self.last_pred))
             if self.skm is not None:
                 print('sklearn train metric: {}, sklearn validation metric: {}'.format(
                                                     self.sk_train_log[-1], self.sk_val_log[-1]))
@@ -103,8 +108,12 @@ class Metrics():
         
     def report(self):
         elapsed = datetime.now() - self.start
+        print('\n...........................')
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
+        print('last 5 targets: \n{}'.format(self.last_y))
+        print('last 5 predictions: \n{}'.format(self.last_pred))
+        
         if self.skm is not None:
             self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
             print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
@@ -287,7 +296,7 @@ class Learn():
                 self.run('train')
                 with no_grad():
                     self.run('val')
-                    if e > 1 and  self.metrics.lr_log[-1] < self.metrics.min_lr:
+                    if e > 1 and  self.metrics.lr_log[-1] <= self.metrics.min_lr:
                         self.metrics.status_report(now=True)
                         print('early stopping!  learning rate is below the set minimum...')
                         break
@@ -387,7 +396,7 @@ class Learn():
             self.metrics.infer()
         else:
             self.metrics.loss(flag, e_loss/i)
-            if self.metrics.skm is not None: self.metrics.sk_metric(flag)
+            self.metrics.sk_metric(flag)
             
         if flag == 'val': 
             self.scheduler.step(e_loss/i)
