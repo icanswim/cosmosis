@@ -38,7 +38,8 @@ class CModel(nn.Module):
         
         if 'embed_params' in model_params:
             self.embeddings = self.embedding_layer(model_params['embed_params'], self.device)
-        
+            self.embed_params = model_params['embed_params']
+            self.flatten = False
         if hasattr(self, 'layers'):
             self.layers = nn.ModuleList(self.layers) 
         
@@ -68,49 +69,100 @@ class CModel(nn.Module):
         
     def embedding_layer(self, embed_params, device):
         """voc = int (vocabulary size)
-        vec = int (embedding dimension length(
+        vec = int (embedding dimension length)
         padding_idx = 0 (the token used for padding)
         trainable = True/False (feed gradient back to the embedding)
 
-        model_params =  {'embed_params': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)}
+        embed_params =  {'embed': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)],
+                         'embed2': [('feature_6',3,8,0,True)]}
+
+        returns embedded = {'feature_3': nn.Embedding(3,16,0,True),
+                            'feature_4': nn.Embedding(4,16,0,True),
+                            'feature_6': nn.Embedding(3,8,0,True)}
         """
-        embeddings = [nn.Embedding(voc, vec, padding_idx).to(device) \
-                      for _, voc, vec, padding_idx, _ in embed_params]
-        for i, e in enumerate(embed_params):
-            param = embeddings[i].weight
-            param.requires_grad = e[4]
+        embeddings = {}
+        for k, v in embed_params:
+            for feature, voc, vec, padding_idx, trainable in v:
+                embeddings[k] = nn.Embedding(voc, vec, padding_idx).to(device)
+                embeddings[k].weight.requires_grad = trainable
         return embeddings
+
+    def embed_features(self, data):
+        """
+        returns embedded = {'embed': torch.tensor,
+                            'embed2': torch.tensor}
+        """
+        embedded = {}
+
+        for output_key, embed_p in self.embed_params:
+            output = []
+            for p in embed_p:
+                feature = p[0]
+                if type(data) == dict:
+                    out = self.embeddings[feature(data[feature])]
+                elif hasattr(data, feature):
+                    out = self.embeddings[feature(data.feature)]
+                else:
+                    out = self.embeddings(data)
+                    
+                if self.flatten: 
+                    out = flatten(out, start_dim=1)
+                    
+                output.append(out)
+                
+            if len(output) > 1:
+                output = cat(output, dim=1)
+            else:
+                output = output[0]
+                
+        embedded[output_key] = output
+        
 
     def forward(self, data):
         """data['X'] = torch tensor of concatenated continuous feature vectors
-        embed = a list of lists (one for each feature) of torch.cuda tensor int64 
-            indices (keys) to be fed to the embedding layer
+        
+        embed_params: {'embed': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)],
+                       'embed2': [('feature_6',3,8,0,True)]}
+        
+        lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
+        lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
+        lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
+        ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_5'],
+                                                                     'X2': ['feature_2'],
+                                                                     'embed': ['feature_3','feature_4'],
+                                                                     'embed2': ['feature_6']},
+                                                     'criterion_input': {'target': ['feature_5']},
+                                      'transforms': {'feature_1': [ExampleTransform(10)],
+                                                     'feature_2': [Reshape(-1), Pad1d(10)],
+                                                     'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3)],
+                                                     'feature_4': [Pad1d(5), EmbedLookup(lookup_feature_4)]
+                                                     'feature_6': [EmbedLookup(lookup_feature_6)]},
+                                      'boom': 'bang'}}
+                                      
+        for models with more complicated inputs overwrite the forward() with custom routing
         """
-        if type(data) == dict:
-            if 'X' in data: 
-                X = data['X']
-
-            if 'embed' in data:
-                embedded = []
-                for e, idx in enumerate(data['embed']):
-                    out = self.embeddings[e](idx)
-                    embedded.append(flatten(out, start_dim=1))
-
-                if len(embedded) > 1:
-                    embedded = cat(embedded, dim=1)
-                else:
-                    embedded = embedded[0]
-
-                if 'X' in data:
-                    X = cat([X, embedded], dim=1)
-                else:  
-                    X = embedded
-                    
-        elif hasattr(data, 'X'):
-            X = data.X
+        if self.embed_params:
+            embedded = self.embed_features(data)
+            emb = embedded['embed'] 
+        
+            if type(data) == dict:
+                if 'X' in data: 
+                    X = data['X']
+                    X = cat([X, emb])
+            elif hasattr(data, 'X'):
+                X = data.X
+                X = cat([X, emb])
+            else:
+                X = emb
         else:
-            X = data
-   
+            if type(data) == dict:
+                if 'X' in data: 
+                    X = data['X']    
+            elif hasattr(data, 'X'):
+                X = data.X
+            else:
+                X = data
+           
         for l in self.layers:
             X = l(X)
             
@@ -211,5 +263,21 @@ class FFNet(CModel):
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
+
+
+class GPT(CModel):
+
+    def build(self, d_model=128, nhead=4, num_layers=2, dim_feedforward=128):
+        self.layers = []
+        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
+        self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
+
+    def forward(self, src_data, tgt_data):
+
+        for l in self.layers:
+            x = l(src_data, tgt_data)
+        return x
+
+
 
 

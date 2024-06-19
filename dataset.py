@@ -22,7 +22,7 @@ class CDataset(Dataset, ABC):
                                                                  'embed': ['feature_3']},
                                                  'criterion_input': {'target': ['feature_2'],
                                                                      'embed': ['feature_4']}},
-                                  'transforms': {'feature_1': [Pad(5), SomeTransform()],
+                                  'transforms': {'feature_1': [Pad1d(5), SomeTransform()],
                                                  'feature_3': [SomeTransform2()]},
                                   'boom': 'bang'}}
                                   
@@ -32,7 +32,7 @@ class CDataset(Dataset, ABC):
     ds_idx = [1,2,3,...]  
         a list of indices or keys (ints or strings) to be passed to the Sampler and Dataloader
         
-    transforms = {'feature_1': [Pad(5), Reshape((1,-1))]}
+    transforms = {'feature_1': [Pad1d(5), Flatten()]}
         keys are the feature name or index, values are a list of transforms in order of operation
         
     output should be a single object (dict, Data, tensor) which is parsed in Learn() and then again
@@ -111,6 +111,7 @@ class CDataset(Dataset, ABC):
                 transforms = self.transforms[f] #get the list of transforms for this feature
                 for T in transforms:
                     out = T(out)
+                
             output.append(out)
             
         if len(output) == 1: return output[0] 
