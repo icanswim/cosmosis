@@ -6,7 +6,7 @@ from pandas.api.types import CategoricalDtype
 import numpy as np
 
 from torch.utils.data import Dataset, ConcatDataset
-from torch import as_tensor, squeeze
+from torch import as_tensor, squeeze, is_tensor, cat
 
 from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -115,7 +115,7 @@ class CDataset(Dataset, ABC):
             output.append(out)
             
         if len(output) == 1: return output[0] 
-        elif type(output[0]) == list:  return output
+        elif is_tensor(output[0]): return cat(output)
         else: return np.concatenate(output)
     
 class EmbedLookup():
@@ -132,7 +132,7 @@ class EmbedLookup():
         idx = []
         for i in np.reshape(arr, -1).tolist():
             idx.append(np.reshape(np.asarray(self.embed_lookup[i]), -1).astype('int64'))
-        return [np.hstack(idx)]
+        return np.hstack(idx)
     
 class Pad1d():
     """Transforms a numpy array"""
@@ -171,7 +171,10 @@ class LoadImage():
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __call__(self, arr):
-        return as_tensor(arr)
+        if type(arr) == list:
+            return [as_tensor(arr[0])] #embedding indices
+        else:
+            return as_tensor(arr)
         
 class AsSparse():
     """Transforms a numpy array to a torch sparse tensor"""
