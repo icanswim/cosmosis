@@ -70,22 +70,34 @@ class CModel(nn.Module):
         vec = int (embedding dimension length)
         padding_idx = 0 (the token used for padding)
         trainable = True/False (feed gradient back to the embedding)
+        flatten = True/False flatten the embedding outputs
+
+        if multiple features per output_key the embedding output is concatenated
+
+        embed_params = {'output_key': [('feature_key',voc,vec,padding_idx,trainable)]}
 
         embed_params =  {'embed': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)],
-                         'embed2': [('feature_6',3,8,0,True)]}
+                         'embed2': [('feature_6',3,8,0,True)],
+                         'flatten': True}
 
         returns embedded = {'feature_3': nn.Embedding(3,16,0,True),
                             'feature_4': nn.Embedding(4,16,0,True),
                             'feature_6': nn.Embedding(3,8,0,True)}
         """
         self.embed_params = embed_params
+        if 'flatten' not in self.embed_params:
+            self.embed_params['flatten'] = False
         embeddings = {}
         
-        for k, params in embed_params.items():
-            for v in params:
-                feature, voc, vec, padding_idx, trainable = v
-                embeddings[feature] = nn.Embedding(voc, vec, padding_idx).to(device)
-                embeddings[feature].weight.requires_grad = trainable
+        for k, params in embed_params.items():                
+            if type(params) == list and type(params[0]) == tuple:
+                for v in params:
+                    feature, voc, vec, padding_idx, trainable = v
+                    embeddings[feature] = nn.Embedding(voc, vec, padding_idx).to(device)
+                    embeddings[feature].weight.requires_grad = trainable
+            else:
+                continue
+                
         return embeddings
 
     def embed_features(self, data):
@@ -96,22 +108,23 @@ class CModel(nn.Module):
 
         for output_key, embed_p in self.embed_params.items():
             output = []
-            for i, p in enumerate(embed_p):
-                feature = p[0]
-                if type(data) == dict:
-                    out = self.embeddings[feature](data[feature])
-                elif hasattr(data, feature):
-                    out = self.embeddings[feature](data.feature)
+            if type(embed_p) == list and type(embed_p[0]) == tuple:
+                for i, p in enumerate(embed_p):
+                    feature = p[0]
+                    if type(data) == dict:
+                        out = self.embeddings[feature](data[feature])
+                    elif hasattr(data, feature):
+                        out = self.embeddings[feature](data.feature)
+                    else:
+                        out = self.embeddings[feature](data)
+                    output.append(out)
+                
+                if len(output) > 1:
+                    output = cat(output, dim=1)
                 else:
-                    out = self.embeddings[feature](data)
-                output.append(out)
-                
-            if len(output) > 1:
-                output = cat(output, dim=1)
-            else:
-                output = output[0]
-                
-            embedded[output_key] = output
+                    output = output[0]
+                    
+                embedded[output_key] = output
         return embedded
         
 
@@ -119,7 +132,8 @@ class CModel(nn.Module):
         """data['X'] = torch tensor of concatenated continuous feature vectors
         
         embed_params: {'embed': [('feature_3',4,16,0,True),('feature_4',5,16,0,True)],
-                       'embed2': [('feature_6',4,8,0,True)]}
+                       'embed2': [('feature_6',4,8,0,True)],
+                       'flatten_embed': True}
         
         lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
         lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
@@ -148,11 +162,12 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             embedded = []
             for k, embed in embedded_dict.items(): # mechanism for multiple embedding outputs
-                embedded.append(flatten(embed))
-            if type(data) == dict:
-                if 'X' in data:  
-                    X = data['X']
-                    X = cat([X, embedded[0]])
+                if 'flatten' in self.embed_params and self.embed_params['flatten'] == True: 
+                    embed = flatten(embed)
+                embedded.append(embed)
+            if type(data) == dict and 'X' in data:
+                X = data['X']
+                X = cat([X, embedded[0]])
             elif hasattr(data, 'X'):
                 X = data.X
                 X = cat([X, embedded[0]])
@@ -271,19 +286,47 @@ class Flatten(nn.Module):
 
 class GPT(CModel):
 
-    def build(self, d_model=128, nhead=4, num_layers=2, dim_feedforward=128):
+    def build(self, d_model=128, nhead=4, num_layers=2, dim_feedforward=128, **kwargs):
         self.layers = []
         decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
 
-    def forward(self, src_data, tgt_data):
+    def forward(self, data):
+
+        if self.embed_params:
+            embedded_dict = self.embed_features(data)
+            embedded = []
+            for k, embed in embedded_dict.items(): # mechanism for multiple embedding outputs
+                if 'flatten' in self.embed_params and self.embed_params['flatten'] == True: 
+                    embed = flatten(embed)
+                embedded.append(embed)
+            if type(data) == dict and 'X' in data:
+                X = data['X']
+                X = cat([X, embedded[0]])
+            elif hasattr(data, 'X'):
+                X = data.X
+                X = cat([X, embedded[0]])
+            else:
+                X = embedded[0]
+        else:
+            if type(data) == dict:
+                if 'X' in data: 
+                    X = data['X']    
+            elif hasattr(data, 'X'):
+                X = data.X
+            else:
+                X = data
 
         for l in self.layers:
-            x = l(src_data, tgt_data)
-        return x
+            X = l(X, X)
+            
+        if self.softmax is not None:
+            X = getattr(F, self.softmax)(X, dim=1)
+
+        return X
 
 
-class ExampleModel(CModel):
+class IdentityModel(CModel):
 
     def build(self, *args, **kwargs):
         self.layers = []

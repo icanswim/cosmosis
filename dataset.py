@@ -55,23 +55,27 @@ class CDataset(Dataset, ABC):
     def load_data(self, kwargs):
         """
         self.ds_idx = [1,2,5,17,...] #some subset
-        if no ds_idx provided the entire dataset will be used, 
-        optionally this could be passed to the Selector/Sampler class in its sample_params
+            if no ds_idx provided the entire dataset will be used, 
+            optionally this could be passed to the Selector/Sampler class in its sample_params
         """
+        #zero is the lookup for the padding index
+        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
+                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+                             'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+        
         datadic = {1: {'feature_1': np.asarray([.04]),
-                       'feature_2': np.asarray([.02]),
+                       'feature_2': np.asarray([[.02,.03],[.04,.05]]),
                        'feature_3': np.asarray(['z1']),
                        'feature_4': np.asarray(['c','c','d']),
-                       'feature_5': np.asarray([1.1])},
+                       'feature_5': np.asarray([1.1]),
+                       'feature_6': np.asarray(['e','f','g'])},
                    2: {'feature_1': np.asarray([.03]),
-                       'feature_2': np.asarray([.01]),
+                       'feature_2': np.asarray([[.1,.2],[.3,.4]]),
                        'feature_3': np.asarray(['x1','z1','y1']),
                        'feature_4': np.asarray(['d','a','d']),
-                       'feature_5': np.asarray([1.2])}}
+                       'feature_5': np.asarray([1.2]),
+                       'feature_6': np.asarray(['f','f','g'])}}
         
-        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4},
-                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3}}
-
         return datadic
     
     def __iter__(self):
@@ -85,7 +89,7 @@ class CDataset(Dataset, ABC):
         """this func feeds the model's forward().  
         the structure of the input_dict determines the structure of the output datadict
         if no input_dict is provided the dataset's native __getitem__() is used
-        keywords = 'criterion_input','embed','model_input'
+        keywords = 'criterion_input', 'model_input'
         """
         if self.input_dict == None:
             return self.ds[i]
@@ -117,6 +121,31 @@ class CDataset(Dataset, ABC):
         if len(output) == 1: return output[0] 
         elif is_tensor(output[0]): return cat(output)
         else: return np.concatenate(output)
+
+
+class ExampleDataset(CDataset):
+    #zero is the lookup for the padding index
+    embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
+                    'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+                    'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+    
+    def load_data(self, boom='bust'):
+        
+        datadic = {1: {'feature_1': np.asarray([.04]),
+                       'feature_2': np.asarray([[.02,.03],[.04,.05]]),
+                       'feature_3': np.asarray(['z1']),
+                       'feature_4': np.asarray(['c','c','d']),
+                       'feature_5': np.asarray([1.1]),
+                       'feature_6': np.asarray(['e','f','g'])},
+                   2: {'feature_1': np.asarray([.03]),
+                       'feature_2': np.asarray([[.1,.2],[.3,.4]]),
+                       'feature_3': np.asarray(['x1','z1','y1']),
+                       'feature_4': np.asarray(['d','a','d']),
+                       'feature_5': np.asarray([1.2]),
+                       'feature_6': np.asarray(['f','f','g'])}}
+        
+        print(boom)
+        return datadic
     
 class EmbedLookup():
     """A transform which converts a list of categorical features to an array of ints which
