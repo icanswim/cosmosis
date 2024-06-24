@@ -66,33 +66,30 @@ class CModel(nn.Module):
                 nn.init.constant_(m.bias, 0)
                    
     def embedding_layer(self, embed_params, device):
-        """voc = int (vocabulary size)
+        """creates the embedding layer per the embedding params specs
+        
+        voc = int (vocabulary size)
         vec = int (embedding dimension length)
         padding_idx = 0 (the token used for padding)
         trainable = True/False (feed gradient back to the embedding)
         flatten = True/False flatten the embedding outputs
 
-        if multiple features per output_key the embedding output is concatenated
+        embed_params = {'output_key': [('feature_key',voc,vec,padding_idx,trainable,flatten)]}
 
-        embed_params = {'output_key': [('feature_key',voc,vec,padding_idx,trainable)]}
-
-        embed_params =  {'embed': [('feature_3',3,16,0,True),('feature_4',4,16,0,True)],
-                         'embed2': [('feature_6',3,8,0,True)],
-                         'flatten': True}
+        embed_params =  {'embed': [('feature_3',3,16,0,True,False),('feature_4',4,16,0,True,False)],
+                         'embed2': [('feature_6',3,8,0,True,False)]}
 
         returns embedded = {'feature_3': nn.Embedding(3,16,0,True),
                             'feature_4': nn.Embedding(4,16,0,True),
                             'feature_6': nn.Embedding(3,8,0,True)}
         """
         self.embed_params = embed_params
-        if 'flatten' not in self.embed_params:
-            self.embed_params['flatten'] = False
         embeddings = {}
         
         for k, params in embed_params.items():                
             if type(params) == list and type(params[0]) == tuple:
                 for v in params:
-                    feature, voc, vec, padding_idx, trainable = v
+                    feature, voc, vec, padding_idx, trainable, flatten = v
                     embeddings[feature] = nn.Embedding(voc, vec, padding_idx).to(device)
                     embeddings[feature].weight.requires_grad = trainable
             else:
@@ -102,13 +99,15 @@ class CModel(nn.Module):
 
     def embed_features(self, data):
         """
-        returns embedded = {'embed': torch.tensor}
+        embeds, flattens and then concatenates keys per self.embed_params
+        returns embedded = {'output_key1': torch.tensor,
+                            'output_key2': torch.tensor}
         """
         embedded = {}
 
-        for output_key, embed_p in self.embed_params.items():
+        for output_key, embed_p in self.embed_params.items(): # [(voc,vec,padding_idx,trainable,flatten)...]
             output = []
-            if type(embed_p) == list and type(embed_p[0]) == tuple:
+            if type(embed_p) == list and type(embed_p[0]) == tuple: 
                 for i, p in enumerate(embed_p):
                     feature = p[0]
                     if type(data) == dict:
@@ -117,6 +116,9 @@ class CModel(nn.Module):
                         out = self.embeddings[feature](data.feature)
                     else:
                         out = self.embeddings[feature](data)
+
+                    if p[5] == True: 
+                        out = flatten(out)
                     output.append(out)
                 
                 if len(output) > 1:
@@ -131,9 +133,8 @@ class CModel(nn.Module):
     def forward(self, data):
         """data['X'] = torch tensor of concatenated continuous feature vectors
         
-        embed_params: {'embed': [('feature_3',4,16,0,True),('feature_4',5,16,0,True)],
-                       'embed2': [('feature_6',4,8,0,True)],
-                       'flatten_embed': True}
+        embed_params: {'output_key1': [('feature_3',4,16,0,True,False),('feature_4',5,16,0,True,False)],
+                       'ouput_key2': [('feature_6',4,8,0,True,False)]}
         
         lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
         lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
@@ -155,30 +156,36 @@ class CModel(nn.Module):
                                                      'feature_6': [EmbedLookup(lookup_feature_6), AsTensor()]},
                                       'boom': 'bang'}}
     
+
+        multiple embedding outputs ('output_key') are concatenated with any other data ouputs (output_key 'X')
                                       
         for models with more complicated inputs overwrite the forward() with custom routing
+        
         """
         if self.embed_params:
             embedded_dict = self.embed_features(data)
-            embedded = []
-            for k, embed in embedded_dict.items(): # mechanism for multiple embedding outputs
-                if 'flatten' in self.embed_params and self.embed_params['flatten'] == True: 
-                    embed = flatten(embed)
-                embedded.append(embed)
-            if type(data) == dict and 'X' in data:
-                X = data['X']
-                X = cat([X, embedded[0]])
-            elif hasattr(data, 'X'):
-                X = data.X
-                X = cat([X, embedded[0]])
+
+            for embed_output_key, embed in embedded_dict.items(): # mechanism for multiple embedding outputs 
+                embed_output_key, embed # only one embedding output used here
+
+            if type(data) == dict:
+                for model_input_key, X in data.items(): # mechanism for multiple model inputs
+                    model_input_key, X # only one model data input used here 
+                X = cat([X, embed], dim=1)
+            elif hasattr(data, self.X):
+                attr = self.X
+                X = data.attr
+                X = cat([X, embed])
             else:
-                X = embedded[0]
+                X = embed
         else:
             if type(data) == dict:
-                if 'X' in data: 
-                    X = data['X']    
-            elif hasattr(data, 'X'):
-                X = data.X
+                for model_input_key, X in data.items(): # mechanism for multiple model inputs
+                    model_input_key, X # only one model data input used here 
+                X = cat([X, embed], dim=1)
+            elif hasattr(data, self.X): # set this with the build() method
+                attr = self.X
+                X = data.attr
             else:
                 X = data
            
@@ -291,32 +298,33 @@ class GPT(CModel):
         decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
 
-    def forward(self, data):
-
         if self.embed_params:
             embedded_dict = self.embed_features(data)
-            embedded = []
-            for k, embed in embedded_dict.items(): # mechanism for multiple embedding outputs
-                if 'flatten' in self.embed_params and self.embed_params['flatten'] == True: 
-                    embed = flatten(embed)
-                embedded.append(embed)
-            if type(data) == dict and 'X' in data:
-                X = data['X']
-                X = cat([X, embedded[0]])
-            elif hasattr(data, 'X'):
-                X = data.X
-                X = cat([X, embedded[0]])
+
+            for embed_output_key, embed in embedded_dict.items(): # mechanism for multiple embedding outputs 
+                embed_output_key, embed # only one embedding output used here
+
+            if type(data) == dict:
+                for model_input_key, X in data.items(): # mechanism for multiple model inputs
+                    model_input_key, X # only one model data input used here 
+                X = cat([X, embed])
+            elif hasattr(data, self.X):
+                attr = self.X
+                X = data.attr
+                X = cat([X, embed])
             else:
-                X = embedded[0]
+                X = embed
         else:
             if type(data) == dict:
-                if 'X' in data: 
-                    X = data['X']    
-            elif hasattr(data, 'X'):
-                X = data.X
+                for model_input_key, X in data.items(): # mechanism for multiple model inputs
+                    model_input_key, X # only one model data input used here 
+                X = cat([X, embed])
+            elif hasattr(data, self.X): # set this with the build() method
+                attr = self.X
+                X = data.attr
             else:
                 X = data
-
+           
         for l in self.layers:
             X = l(X, X)
             
