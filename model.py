@@ -104,14 +104,14 @@ class CModel(nn.Module):
                             'output_key2': torch.tensor}
         """
         embedded = {}
-
-        for output_key, embed_p in self.embed_params.items(): # [(voc,vec,padding_idx,trainable,flatten)...]
+        # [(voc,vec,padding_idx,trainable,flatten),(...)]
+        for output_key, embed_p in self.embed_params.items(): 
             output = []
             if type(embed_p) == list and type(embed_p[0]) == tuple: 
                 for i, p in enumerate(embed_p):
                     feature = p[0]
                     if type(data) == dict:
-                        out = self.embeddings[feature](data[feature])
+                        out = self.embeddings[feature](data['embedding_input'][feature])
                     elif hasattr(data, feature):
                         out = self.embeddings[feature](data.feature)
                     else:
@@ -122,7 +122,7 @@ class CModel(nn.Module):
                     output.append(out)
                 
                 if len(output) > 1:
-                    output = cat(output, dim=1)
+                    output = cat(output, dim=0)
                 else:
                     output = output[0]
                     
@@ -141,10 +141,10 @@ class CModel(nn.Module):
         lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
 
         ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_5'],
-                                                                     'X2': ['feature_2'],
-                                                                     'feature_3': ['feature_3'],
-                                                                     'feature_4': ['feature_4'],
-                                                                     'feature_6': ['feature_6']},
+                                                                     'X2': ['feature_2']},
+                                                     'embedding_imput': {'feature_3': ['feature_3'],
+                                                                         'feature_4': ['feature_4'],
+                                                                         'feature_6': ['feature_6']},
                                                      'criterion_input': {'target': ['feature_5']}},
                                       'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
                                                      'feature_2': [Reshape(-1), Pad1d(10), AsTensor()],
@@ -165,25 +165,23 @@ class CModel(nn.Module):
         if self.embed_params:
             embedded_dict = self.embed_features(data)
 
-            for embed_output_key, embed in embedded_dict.items(): # mechanism for multiple embedding outputs 
-                embed_output_key, embed # only one embedding output used here
+            for embed_key, embed in embedded_dict.items(): # mechanism for multiple embedding output
+                embed_key, embed # only one embedding output and key used here
 
-            if type(data) == dict:
-                for model_input_key, X in data.items(): # mechanism for multiple model inputs
-                    model_input_key, X # only one model data input used here 
-                X = cat([X, embed], dim=1)
-            elif hasattr(data, self.X):
+            if type(data) == dict and 'model_input' in data:
+                for model_key, X in data['model_input'].items():
+                    X = cat([X, embed], dim=0)      
+            elif hasattr(data, self.X): 
                 attr = self.X
                 X = data.attr
                 X = cat([X, embed])
             else:
                 X = embed
         else:
-            if type(data) == dict:
-                for model_input_key, X in data.items(): # mechanism for multiple model inputs
-                    model_input_key, X # only one model data input used here 
-                X = cat([X, embed], dim=1)
-            elif hasattr(data, self.X): # set this with the build() method
+            if type(data) == dict and 'model_input' in data:
+                for model_key, X in data['model_input'].items():
+                    X = cat([X, embed], dim=0)
+            elif hasattr(data, self.X): 
                 attr = self.X
                 X = data.attr
             else:
@@ -298,6 +296,7 @@ class GPT(CModel):
         decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
 
+    def forward(self, data):
         if self.embed_params:
             embedded_dict = self.embed_features(data)
 
@@ -307,7 +306,7 @@ class GPT(CModel):
             if type(data) == dict:
                 for model_input_key, X in data.items(): # mechanism for multiple model inputs
                     model_input_key, X # only one model data input used here 
-                X = cat([X, embed])
+                X = cat([X, embed], dim=0)
             elif hasattr(data, self.X):
                 attr = self.X
                 X = data.attr
@@ -318,7 +317,7 @@ class GPT(CModel):
             if type(data) == dict:
                 for model_input_key, X in data.items(): # mechanism for multiple model inputs
                     model_input_key, X # only one model data input used here 
-                X = cat([X, embed])
+                X = cat([X, embed], dim=0)
             elif hasattr(data, self.X): # set this with the build() method
                 attr = self.X
                 X = data.attr
