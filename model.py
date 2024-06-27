@@ -34,6 +34,8 @@ class CModel(nn.Module):
             self.device = model_params['device']
         
         self.softmax = None
+        self.X = 'X'
+        self.target = 'y'
         self.build(**model_params)
         
         if 'embed_params' in model_params:
@@ -155,21 +157,17 @@ class CModel(nn.Module):
                                                      'feature_5': [AsTensor()],
                                                      'feature_6': [EmbedLookup(lookup_feature_6), AsTensor()]},
                                       'boom': 'bang'}}
-    
-
-        multiple embedding outputs ('output_key') are concatenated with any other data ouputs (output_key 'X')
-                                      
-        for models with more complicated inputs overwrite the forward() with custom routing
         
         """
         if self.embed_params:
             embedded_dict = self.embed_features(data)
 
             for embed_key, embed in embedded_dict.items(): # mechanism for multiple embedding output
-                embed_key, embed # only one embedding output and key used here
+                embed_key, embed # single embedding output and key
 
-            if type(data) == dict and 'model_input' in data:
-                for model_key, X in data['model_input'].items():
+            if type(data) == dict and 'model_input' in data and len(data['model_input']) != 0:
+                for model_key, X in data['model_input'].items(): # mechanism for multiple model inputs
+                    model_key, X # single model input and key
                     X = cat([X, embed], dim=0)      
             elif hasattr(data, self.X): 
                 attr = self.X
@@ -300,25 +298,24 @@ class GPT(CModel):
         if self.embed_params:
             embedded_dict = self.embed_features(data)
 
-            for embed_output_key, embed in embedded_dict.items(): # mechanism for multiple embedding outputs 
-                embed_output_key, embed # only one embedding output used here
+            for embed_key, embed in embedded_dict.items(): # mechanism for multiple embedding output
+                embed_key, embed # single embedding output and key
 
-            if type(data) == dict:
-                for model_input_key, X in data.items(): # mechanism for multiple model inputs
-                    model_input_key, X # only one model data input used here 
-                X = cat([X, embed], dim=0)
-            elif hasattr(data, self.X):
+            if type(data) == dict and 'model_input' in data and len(data['model_input']) != 0:
+                for model_key, X in data['model_input'].items(): # mechanism for multiple model inputs
+                    model_key, X # single model input and key
+                    X = cat([X, embed], dim=0)      
+            elif hasattr(data, self.X): 
                 attr = self.X
                 X = data.attr
                 X = cat([X, embed])
             else:
                 X = embed
         else:
-            if type(data) == dict:
-                for model_input_key, X in data.items(): # mechanism for multiple model inputs
-                    model_input_key, X # only one model data input used here 
-                X = cat([X, embed], dim=0)
-            elif hasattr(data, self.X): # set this with the build() method
+            if type(data) == dict and 'model_input' in data:
+                for model_key, X in data['model_input'].items():
+                    X = cat([X, embed], dim=0)
+            elif hasattr(data, self.X): 
                 attr = self.X
                 X = data.attr
             else:
