@@ -15,15 +15,17 @@ def logsumexp_2d(tensor):
      
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
+    model_params = {}
     device = 'cpu'/'cuda:0' 
-    embed_params = [('feature', voc, vec, padding_idx, param.requires_grad),...]
+    embed_params = [('feature', voc, vec, padding_idx, trainable, flatten),...]
         'feature' = name/key of feature to be embedded
         voc = vocabulary size (int) 
         vec = length of the embedding vectors (int)
         padding_idx = None/int 
         param.requires_grad = True/False
+        flatten = True/False
         
-    datadict keywords: 'X','embed'
+    datadict keywords: model_input, embedding_input
       
     """
     def __init__(self, model_params):
@@ -40,6 +42,8 @@ class CModel(nn.Module):
         
         if 'embed_params' in model_params:
             self.embeddings = self.embedding_layer(model_params['embed_params'], self.device)
+        else:
+            self.embed_params = None
         if hasattr(self, 'layers'):
             self.layers = nn.ModuleList(self.layers) 
         
@@ -176,9 +180,9 @@ class CModel(nn.Module):
             else:
                 X = embed
         else:
-            if type(data) == dict and 'model_input' in data:
-                for model_key, X in data['model_input'].items():
-                    X = cat([X, embed], dim=0)
+            if type(data) == dict and 'model_input' in data and len(data['model_input']) != 0:
+                for model_key, X in data['model_input'].items(): # mechanism for multiple model inputs
+                    model_key, X # single model input and key     
             elif hasattr(data, self.X): 
                 attr = self.X
                 X = data.attr
@@ -232,7 +236,7 @@ def tv_model(model_params):
     model = launcher(**model_params['tv_params'])
 
     def forward(data): # monkey patch
-        return model._forward_impl(data['image'])
+        return model._forward_impl(data['model_input']['image'])
     
     model.forward = forward
     print('torchvision model {} loaded...'.format(model_params['model_name'])) 
@@ -295,34 +299,11 @@ class GPT(CModel):
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
 
     def forward(self, data):
-        if self.embed_params:
-            embedded_dict = self.embed_features(data)
 
-            for embed_key, embed in embedded_dict.items(): # mechanism for multiple embedding output
-                embed_key, embed # single embedding output and key
+        embedded_dict = self.embed_features(data)
 
-            if type(data) == dict and 'model_input' in data and len(data['model_input']) != 0:
-                for model_key, X in data['model_input'].items(): # mechanism for multiple model inputs
-                    model_key, X # single model input and key
-                    X = cat([X, embed], dim=0)      
-            elif hasattr(data, self.X): 
-                attr = self.X
-                X = data.attr
-                X = cat([X, embed])
-            else:
-                X = embed
-        else:
-            if type(data) == dict and 'model_input' in data:
-                for model_key, X in data['model_input'].items():
-                    X = cat([X, embed], dim=0)
-            elif hasattr(data, self.X): 
-                attr = self.X
-                X = data.attr
-            else:
-                X = data
-           
         for l in self.layers:
-            X = l(X, X)
+            X = l(embedded_dict['X'], embedded_dict['X1'])
             
         if self.softmax is not None:
             X = getattr(F, self.softmax)(X, dim=1)

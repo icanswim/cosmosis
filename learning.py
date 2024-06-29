@@ -31,7 +31,7 @@ class Metrics():
         
         self.sk_metric_name, self.sk_params = sk_metric_name, sk_params
         self.skm, self.sk_train_log, self.sk_val_log = None, [], []
-        self.sk_y, self.last_y, self.sk_pred, self.last_pred = [], [], [], []
+        self.y, self.last_y, self.y_pred, self.last_y_pred = [], [], [], []
         if self.sk_metric_name is not None:
             self.skm = getattr(metrics, self.sk_metric_name)
             
@@ -44,7 +44,7 @@ class Metrics():
         self.predictions.to_csv('./logs/{}_inference.csv'.format(self.start), index=True)
         print('inference {} complete and saved to csv...'.format(self.start))
 
-    def sk_metric(self, flag):
+    def metric(self, flag):
         """TODO multiple sk metrics"""
     
         def softmax(x): return np.exp(x)/sum(np.exp(x))
@@ -53,25 +53,25 @@ class Metrics():
             x_max = x.max()
             normalized = np.exp(x - x_max)
             return normalized / normalized.sum()
-        
-        y = np.concatenate(self.sk_y)
-        y_pred = np.concatenate(self.sk_pred)
 
-        if self.sk_metric_name == 'roc_auc_score' and y_pred.ndim == 2:
-            y_pred = np.apply_along_axis(softmax, 1, y_pred)
+        y = np.concatenate(self.y)
+        y_pred = np.concatenate(self.y_pred)
         
-        if self.sk_metric_name == 'accuracy_score' and y_pred.ndim == 2:
-            y_pred = np.argmax(y_pred, axis=1)
-
         if self.sk_metric_name is not None:
+            if self.sk_metric_name == 'roc_auc_score' and y_pred.ndim == 2:
+                y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
+            
+            if self.sk_metric_name == 'accuracy_score' and y_pred.ndim == 2:
+                y_pred = np.argmax(y_pred, axis=1)
+
             score = self.skm(y, y_pred, **self.sk_params)
             if flag == 'train':
                 self.sk_train_log.append(score)
             else:
                 self.sk_val_log.append(score)
 
-        self.last_y, self.last_pred = y[-5:], y_pred[-5:]
-        self.sk_y, self.sk_pred = [], []
+        self.last_y, self.last_y_pred = np.squeeze(y[-5:]), np.squeeze(y_pred[-5:])
+        self.y, self.y_pred = [], []
         
     def loss(self, flag, loss):
         if flag == 'train':
@@ -93,7 +93,7 @@ class Metrics():
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
             print('last 5 targets: \n{}'.format(self.last_y))
-            print('last 5 predictions: \n{}'.format(self.last_pred))
+            print('last 5 predictions: \n{}'.format(self.last_y_pred))
             if self.skm is not None:
                 print('sklearn train metric: {}, sklearn validation metric: {}'.format(
                                                     self.sk_train_log[-1], self.sk_val_log[-1]))
@@ -106,13 +106,13 @@ class Metrics():
             if elapsed.total_seconds() > self.report_interval or self.epoch % 10 == 0:
                 print_report()
         
-    def report(self):
+    def final_report(self):
         elapsed = datetime.now() - self.start
         print('\n...........................')
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
         print('last 5 targets: \n{}'.format(self.last_y))
-        print('last 5 predictions: \n{}'.format(self.last_pred))
+        print('last 5 predictions: \n{}'.format(self.last_y_pred))
         
         if self.skm is not None:
             self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
@@ -304,7 +304,7 @@ class Learn():
             with no_grad():
                 self.run('test')
                 
-            self.metrics.report()  
+            self.metrics.final_report()  
             
         else: #no Criterion implies inference mode
             with no_grad():
@@ -358,6 +358,7 @@ class Learn():
                 if type(data) == dict: #data can be passed as a dict or data class object
                     _data = {}
                     for in_key in data:
+                        _data[in_key] = {}
                         for out_key in data[in_key]:
                             _data[in_key][out_key] = data[in_key][out_key].to(
                                                             'cuda:0', non_blocking=True)
@@ -374,15 +375,14 @@ class Learn():
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
                 if type(data) == dict:
-                    y = data[self.target]
+                    y = data['criterion_input'][self.target]
                 else: 
                     y = getattr(data, self.target)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
-                if self.metrics.skm is not None:
-                    self.metrics.sk_y.append(y.detach().cpu().numpy())
-                    self.metrics.sk_pred.append(y_pred.detach().cpu().numpy())
+                self.metrics.y.append(y.detach().cpu().numpy())
+                self.metrics.y_pred.append(y_pred.detach().cpu().numpy())
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
@@ -391,7 +391,7 @@ class Learn():
             self.metrics.infer()
         else:
             self.metrics.loss(flag, e_loss/i)
-            self.metrics.sk_metric(flag)
+            self.metrics.metric(flag)
             
         if flag == 'val': 
             self.scheduler.step(e_loss/i)

@@ -17,17 +17,28 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
     
-    ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_5'],
-                                                                 'X2': ['feature_5'],
-                                                                 'embed': ['feature_3']},
-                                                 'criterion_input': {'target': ['feature_2'],
-                                                                     'embed': ['feature_4']}},
-                                  'transforms': {'feature_1': [Pad1d(5), SomeTransform()],
-                                                 'feature_3': [SomeTransform2()]},
+    'embed_params': {'embed': [('feature_3',4,16,0,True,False),('feature_4',5,16,0,True,False)]}
+    ds_params = {mode_key: {learner_key: {module_key: {sub_module_key: [dataset_key]))))
+    ds_params = {'train_params': {'input_dict': {'model_input' {'X': ['feature_1','feature_5']}}}}
+    
+    lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
+    lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
+    lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
+    
+    ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_2']},
+                                                 'embedding_input': {'feature_3': ['feature_3'],
+                                                                     'feature_4': ['feature_4']},
+                                                 'criterion_input': {'target': ['feature_5']}},
+                                  'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
+                                                 'feature_2': [Reshape(-1), AsTensor()],
+                                                 'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3), AsTensor()],
+                                                 'feature_4': [Pad1d(5), EmbedLookup(lookup_feature_4), AsTensor()],
+                                                 'feature_5': [AsTensor()],
+                                                 'feature_6': [EmbedLookup(lookup_feature_6), AsTensor()]},
                                   'boom': 'bang'}}
-                                  
-        structure of the input_dict determines the structure of the output data_dict
-        keywords: 'criterion_input','model_input','embed','target'
+                                      
+            structure of the input_dict determines the structure of the output data_dict
+            keywords: 'criterion_input','model_input','embed','target'
         
     ds_idx = [1,2,3,...]  
         a list of indices or keys (ints or strings) to be passed to the Sampler and Dataloader
@@ -278,7 +289,7 @@ class TVDS(CDataset):
         image = self.ds[i][0]
         label = self.ds[i][1]
         return {'model_input': {'image': image},
-                'criterion_input': {'target': label}}
+                'criterion_input': {'y': label}}
         
     def load_data(self, dataset, tv_params):
         from torchvision import datasets as tvds
