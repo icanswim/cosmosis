@@ -41,7 +41,7 @@ class CModel(nn.Module):
         self.build(**model_params)
         
         if 'embed_params' in model_params:
-            self.embeddings = self.embedding_layer(model_params['embed_params'], self.device)
+            self.embeddings = self.create_embedding_layers(model_params['embed_params'], self.device)
         else:
             self.embed_params = None
         if hasattr(self, 'layers'):
@@ -71,9 +71,10 @@ class CModel(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
                    
-    def embedding_layer(self, embed_params, device):
+    def create_embedding_layers(self, embed_params, device):
         """creates the embedding layer per the embedding params specs
-        
+        'output_key' = 
+        'feature_key' = name/key of feature to be embedded
         voc = int (vocabulary size)
         vec = int (embedding dimension length)
         padding_idx = 0 (the token used for padding)
@@ -105,12 +106,15 @@ class CModel(nn.Module):
 
     def embed_features(self, data):
         """
-        embeds, flattens and then concatenates keys per self.embed_params
-        returns embedded = {'output_key1': torch.tensor,
+        embeds, flattens and then concatenates per self.embed_params
+        
+        self.embedding_params
+            [('output_key',voc,vec,padding_idx,trainable,flatten),(...)]
+        
+        returns embedded = {'output_key': torch.tensor,
                             'output_key2': torch.tensor}
         """
         embedded = {}
-        # [(voc,vec,padding_idx,trainable,flatten),(...)]
         for output_key, embed_p in self.embed_params.items(): 
             output = []
             if type(embed_p) == list and type(embed_p[0]) == tuple: 
