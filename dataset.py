@@ -17,18 +17,19 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class CDataset(Dataset, ABC):
     """An abstract base class for cosmosis datasets
     
-    'embed_params': {'embed': [('feature_3',4,16,0,True,False),('feature_4',5,16,0,True,False)]}
-    ds_params = {mode_key: {learner_key: {module_key: {sub_module_key: [dataset_key]))))
-    ds_params = {'train_params': {'input_dict': {'model_input' {'X': ['feature_1','feature_5']}}}}
+    embed_param = {'feature': (voc,vec,padding_idx,trainable),
+                   'feature_3': (4,16,0,True),
+                   'feature_4': (5,16,0,True),
+                   'some_param': True}
     
     lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
     lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
     lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
     
-    ds_params = {'train_params': {'input_dict': {'model_input': {'X': ['feature_1','feature_2']},
-                                                 'embedding_input': {'feature_3': ['feature_3'],
-                                                                     'feature_4': ['feature_4']},
-                                                 'criterion_input': {'target': ['feature_5']}},
+    ds_param = {'train_param': {'input_dict': {'model_input': {'X': ['feature_1','feature_2']},
+                                                               'embedding_input': {'feature_3': ['feature_3'],
+                                                                                   'feature_4': ['feature_4']},
+                                                 'criterion_input': {'y': ['feature_5']}},
                                   'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
                                                  'feature_2': [Reshape(-1), AsTensor()],
                                                  'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3), AsTensor()],
@@ -67,7 +68,7 @@ class CDataset(Dataset, ABC):
         """
         self.ds_idx = [1,2,5,17,...] #some subset
             if no ds_idx provided the entire dataset will be used, 
-            optionally this could be passed to the Selector/Sampler class in its sample_params
+            optionally this could be passed to the Selector/Sampler class in its sample_param
         """
         #zero is the lookup for the padding index
         self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
@@ -97,20 +98,13 @@ class CDataset(Dataset, ABC):
         return len(self.ds_idx)
     
     def __getitem__(self, i):         
-        """this func feeds the model's forward().  
-        the structure of the input_dict determines the structure of the output datadict
-        if no input_dict is provided the dataset's native __getitem__() is used
-        keywords = 'criterion_input', 'model_input'
-        """
+        """if no input_dict is give then the dataset's native __getitem__ is used"""
         if self.input_dict == None:
             return self.ds[i]
 
         datadic = {}
-        for input_key in self.input_dict:
-            datadic[input_key] = {}
-            for output_key in self.input_dict[input_key]:
-                out = self._get_features(self.ds[i], self.input_dict[input_key][output_key])
-                datadic[input_key][output_key] = out
+        for input_key, features in self.input_dict.items():
+            datadic[input_key] = self._get_features(self.ds[i], features)
         return datadic
     
     def _get_features(self, data, features):
@@ -279,7 +273,7 @@ class ExpandN():
 class TVDS(CDataset):
     """A wrapper for torchvision.datasets
     dataset = torchvision datasets class name str ('FakeData')
-    tv_params = dict of torchvision.dataset parameters ({'size': 1000})
+    tv_param = dict of torchvision.dataset parameters ({'size': 1000})
     """
     def __init__(self, **kwargs):
         print('creating torch vision {} dataset...'.format(kwargs['dataset']))
@@ -291,9 +285,9 @@ class TVDS(CDataset):
         return {'model_input': {'image': image},
                 'criterion_input': {'y': label}}
         
-    def load_data(self, dataset, tv_params):
+    def load_data(self, dataset, tv_param):
         from torchvision import datasets as tvds
-        ds = getattr(tvds, dataset)(**tv_params)
+        ds = getattr(tvds, dataset)(**tv_param)
         self.ds_idx = list(range(len(ds)))
         return ds
         
@@ -302,15 +296,15 @@ class SKDS(CDataset):
     """A wrapper for sklearn.datasets
     https://scikit-learn.org/stable/datasets/sample_generators.html
     dataset = sklearn datasets method name str ('make_regression')
-    sk_params = dict of sklearn.datasets parameters ({'n_samples': 100})
+    sk_param = dict of sklearn.datasets parameters ({'n_samples': 100})
     """    
     def __init__(self, **kwargs):
         print('creating scikit learn {} dataset...'.format(kwargs['dataset']))
         super().__init__(**kwargs)
         
-    def load_data(self, dataset, sk_params, features_dtype, targets_dtype):
+    def load_data(self, dataset, sk_param, features_dtype, targets_dtype):
         from sklearn import datasets as skds              
-        ds = getattr(skds, dataset)(**sk_params)
+        ds = getattr(skds, dataset)(**sk_param)
         datadic = {}
         for i in range(len(ds[0])):
             datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
