@@ -104,7 +104,7 @@ class CModel(nn.Module):
                 
         return embedding_layer
 
-    def embed_feature(self, data):
+    def embed_features(self, data):
         """
         passes the tokens to the embedding layer
         
@@ -131,14 +131,17 @@ class CModel(nn.Module):
     def forward(self, data):
 
         if self.embed_param:
-            embedded_dict = self.embed_feature(data)
+            embedded_dict = self.embed_features(data)
 
             embedded = []
+            cat_dim = 1
             for feature, embed in embedded_dict.items(): # mechanism for multiple embedding output
                 if self.embed_param['flatten']:
+                    cat_dim = 0
                     embed = flatten(embed)
                 feature, embedded.append(embed)
-            embedded = cat(embedded)
+                
+            embedded = cat(embedded, dim=cat_dim)
             
             if type(data) == dict and len(data) != 0:
                 X = []

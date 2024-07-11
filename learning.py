@@ -354,23 +354,15 @@ class Learn():
        
         for data in dataloader:
             i += self.bs
-            print('ping1!!!!!!!!!!!!')
             if self.gpu: # overwrite the datadic with a new copy on the gpu
-                print('gpu!!!!!!!!!!!!!!')
-                if type(data) == dict: #data can be passed as a dict or data class object
+                if type(data) == dict: 
                     _data = {}
-                    for in_key in data:
-                        if in_key in ['model_input','criterion_input']:
-                            _data[in_key] = {}
-                            for out_key in data[in_key]:
-                                _data[in_key][out_key] = data[in_key][out_key].to(
-                                                                'cuda:0', non_blocking=True)
-                        data = _data
-
-                else: #if data class object
+                    for k, v in data.items():
+                        _data[k] = data[v].to('cuda:0', non_blocking=True)
+                    data = _data
+                else: 
                     data = data.to('cuda:0', non_blocking=True)
-            print('ding!!!!!!!!!!!!!!!!!!!!!!!!!!')
-            y_pred = self.model(data['model_input'])
+            y_pred = self.model(data)
      
             if self.squeeze_y_pred: y_pred = squeeze(y_pred)
                 
@@ -378,9 +370,9 @@ class Learn():
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
                 if type(data) == dict:
-                    y = data['criterion_input'][self.target]
+                    y = data[self.y]
                 else: 
-                    y = getattr(data, self.target)
+                    y = getattr(data, self.y)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
