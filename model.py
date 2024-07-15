@@ -35,8 +35,15 @@ class CModel(nn.Module):
             self.device = model_param['device']
         
         self.softmax = None
-        self.X = 'X'
-        self.y = 'y'
+        if 'X' in model_param:
+            self.X = model_param['X']
+        else:
+            self.X = None
+
+        if 'y' in model_param:
+            self.y = model_param['y']
+        else: 
+            self.y = 'y'
 
         if 'embed_param' in model_param:
             self.embed_param = model_param['embed_param']
@@ -129,46 +136,41 @@ class CModel(nn.Module):
         return embedded
 
     def forward(self, data):
-
+        
+        embedded = []
         if self.embed_param:
             embedded_dict = self.embed_features(data)
-
-            embedded = []
             cat_dim = 1
             for feature, embed in embedded_dict.items(): # mechanism for multiple embedding output
                 if self.embed_param['flatten']:
                     cat_dim = 0
                     embed = flatten(embed)
                 feature, embedded.append(embed)
-                
-            embedded = cat(embedded, dim=cat_dim)
+            embedded = cat(embedded, dim=cat_dim) # multiple embedding inputs are simply concatenated
             
-            if type(data) == dict and len(data) != 0:
-                X = []
-                for k, v in data.items(): # mechanism for multiple model inputs
-                    if k not in list(embedded_dict.keys()): # filter out already embedded features
-                        X.append(v)
-                X.append(embedded)
-                X = cat(X, dim=0)      
-            elif hasattr(data, self.X): 
-                attr = self.X
-                X = data.attr
-                X = cat([X, embedded])
-            else:
-                X = embedded
+        X = [] 
+        if type(data) == dict:
+            
+            if self.X is not None: # optionally provide list of dataset keys
+                keys = self.X      
+            else: 
+                keys = list(data) # mechanism for multiple model inputs
+                
+            for k in keys:
+                if k not in list(embedded_dict.keys()) + list(self.y): # filter out already embedded features and target
+                    X.append(data[k])
+                    
+            X.append(embedded)
+            X = cat(X, dim=0) # multiple inputs are simply concatenated with any embeddings  
+            
+        elif hasattr(data, self.X): 
+            attr = self.X
+            X = data.attr
+            X = cat([X, embedded])
+
         else:
-            if type(data) == dict and len(data) != 0:
-                X = []
-                for k, v in data.items(): # mechanism for multiple model inputs
-                    if k not in list(embedded_dict.keys()): # filter out already embedded features
-                        X.append(v)
-                X = cat(X, dim=0)   
-            elif hasattr(data, self.X): 
-                attr = self.X
-                X = data.attr
-            else:
-                X = data
-           
+            raise Exception('incorrect data/key formation in CModel.forward()...')
+
         for l in self.layers:
             X = l(X)
             
