@@ -358,7 +358,7 @@ class Learn():
                 if type(data) == dict: 
                     _data = {}
                     for k, v in data.items():
-                        _data[k] = data[v].to('cuda:0', non_blocking=True)
+                        _data[k] = data[k].to('cuda:0', non_blocking=True)
                     data = _data
                 else: 
                     data = data.to('cuda:0', non_blocking=True)

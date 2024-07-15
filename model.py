@@ -24,7 +24,7 @@ class CModel(nn.Module):
         padding_idx = None/int 
         param.requires_grad = True/False
         
-    datadict keywords: model_input, embedding_input
+    datadict keywords:
       
     """
     def __init__(self, model_param):
@@ -141,11 +141,11 @@ class CModel(nn.Module):
         if self.embed_param:
             embedded_dict = self.embed_features(data)
             cat_dim = 1
-            for feature, embed in embedded_dict.items(): # mechanism for multiple embedding output
+            for e, embed in embedded_dict.items(): # mechanism for multiple embedding output
                 if self.embed_param['flatten']:
                     cat_dim = 0
                     embed = flatten(embed)
-                feature, embedded.append(embed)
+                e, embedded.append(embed)
             embedded = cat(embedded, dim=cat_dim) # multiple embedding inputs are simply concatenated
             
         X = [] 
@@ -282,11 +282,17 @@ class GPT(CModel):
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
 
     def forward(self, data):
-
-        embedded_dict = self.embed_features(data)
+        
+        embedded = []
+        if self.embed_param:
+            embedded_dict = self.embed_features(data)
+            X1 = embedded_dict['X1']
+            X2 = embedded_dict['X2']
+        else:
+            raise Exception('incorrect data/key formation in CModel.forward()...')
 
         for l in self.layers:
-            X = l(embedded_dict['X'], embedded_dict['X1'])
+            X = l(X1, X2)
             
         if self.softmax is not None:
             X = getattr(F, self.softmax)(X, dim=1)
