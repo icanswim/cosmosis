@@ -370,9 +370,9 @@ class Learn():
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
             else:
                 if type(data) == dict:
-                    y = data[self.y]
+                    y = data[self.target]
                 else: 
-                    y = getattr(data, self.y)
+                    y = getattr(data, self.target)
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()

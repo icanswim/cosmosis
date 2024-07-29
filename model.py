@@ -137,8 +137,11 @@ class CModel(nn.Module):
 
     def forward(self, data):
         
-        embedded = []
+        filter_keys = []
+        if self.y is not None: filter_keys.append(self.y)
+        
         if self.embed_param:
+            embedded = []
             embedded_dict = self.embed_features(data)
             cat_dim = 1
             for e, embed in embedded_dict.items(): # mechanism for multiple embedding output
@@ -147,29 +150,29 @@ class CModel(nn.Module):
                     embed = flatten(embed)
                 e, embedded.append(embed)
             embedded = cat(embedded, dim=cat_dim) # multiple embedding inputs are simply concatenated
+            filter_keys.append(embedded_dict.keys())
             
-        X = [] 
         if type(data) == dict:
-            
+            X = []
             if self.X is not None: # optionally provide list of dataset keys
                 keys = self.X      
             else: 
                 keys = list(data) # mechanism for multiple model inputs
                 
             for k in keys:
-                if k not in list(embedded_dict.keys()) + list(self.y): # filter out already embedded features and target
+                if k not in filter_keys: # filter out already embedded features and target
                     X.append(data[k])
                     
-            X.append(embedded)
+            if self.embed_param: X.append(embedded) 
             X = cat(X, dim=0) # multiple inputs are simply concatenated with any embeddings  
             
         elif hasattr(data, self.X): 
             attr = self.X
             X = data.attr
-            X = cat([X, embedded])
-
+            if self.embed_param: 
+                X = cat([X, embedded])
         else:
-            raise Exception('incorrect data/key formation in CModel.forward()...')
+            raise Exception('incorrect data/key format in CModel.forward()...')
 
         for l in self.layers:
             X = l(X)
@@ -218,7 +221,7 @@ def tv_model(model_param):
     model = launcher(**model_param['tv_param'])
 
     def forward(data): # monkey patch
-        return model._forward_impl(data['model_input']['image'])
+        return model._forward_impl(data['image'])
     
     model.forward = forward
     print('torchvision model {} loaded...'.format(model_param['model_name'])) 
