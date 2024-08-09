@@ -136,7 +136,6 @@ class CModel(nn.Module):
         return embedded
 
     def forward(self, data):
-        
         filter_keys = []
         if self.y is not None: filter_keys.append(self.y)
         
@@ -163,17 +162,17 @@ class CModel(nn.Module):
                 if k not in filter_keys: # filter out already embedded features and target
                     X.append(data[k])
                     
-            if self.embed_param: X.append(embedded) 
             X = cat(X, dim=0) # multiple inputs are simply concatenated with any embeddings  
             
-        elif hasattr(data, self.X): 
+        elif self.X is not None and hasattr(data, self.X): 
             attr = self.X
             X = data.attr
-            if self.embed_param: 
-                X = cat([X, embedded])
         else:
-            raise Exception('incorrect data/key format in CModel.forward()...')
-
+            X = data
+            
+        if self.embed_param: 
+                X = cat([X, embedded])
+            
         for l in self.layers:
             X = l(X)
             

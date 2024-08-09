@@ -26,27 +26,31 @@ class CDataset(Dataset, ABC):
     lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
     lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
     
-    ds_param = {'train_param': {'input_dict': {'model_input': {'X': ['feature_1','feature_2']},
-                                                               'embedding_input': {'feature_3': ['feature_3'],
-                                                                                   'feature_4': ['feature_4']},
-                                                 'criterion_input': {'y': ['feature_5']}},
-                                  'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
-                                                 'feature_2': [Reshape(-1), AsTensor()],
-                                                 'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3), AsTensor()],
-                                                 'feature_4': [Pad1d(5), EmbedLookup(lookup_feature_4), AsTensor()],
-                                                 'feature_5': [AsTensor()],
-                                                 'feature_6': [EmbedLookup(lookup_feature_6), AsTensor()]},
-                                  'boom': 'bang'}}
-                                      
-            structure of the input_dict determines the structure of the output data_dict
-            keywords: 'criterion_input','model_input','embed','target'
+    ds_param = {'train_param': {'input_dict': {
+                                               'X2': ['feature_1','feature_2'], 
+                                               'X3': ['feature_2'],
+                                               'embed_3': ['feature_3'],
+                                               'embed_4': ['feature_4'],
+                                               'y': ['feature_5'],
+                                                },
+                                'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
+                                               'feature_2': [Reshape(-1), AsTensor()],
+                                               'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3), AsTensor()],
+                                               'feature_4': [Pad1d(5), EmbedLookup(lookup_feature_4), AsTensor()],
+                                               'feature_5': [AsTensor()],
+                                               'feature_6': [Pad1d(5), EmbedLookup(lookup_feature_6), AsTensor()]},
+                                  'boom': 'bang'}}           
+    
+    keywords: 'input_dict'
         
     ds_idx = [1,2,3,...]  
         a list of indices or keys (ints or strings) to be passed to the Sampler and Dataloader
         
     transforms = {'feature_1': [Pad1d(5), Flatten()]}
         keys are the feature name or index, values are a list of transforms in order of operation
-        
+
+    Returns {'X2': Tensor, 'X3': Tensor, 'embed_3': Tensor, 'embed_4': Tensor, 'y': Tensor}
+    
     output should be a single object (dict, Data, tensor) which is parsed in Learn() and then again
     in the CModel()
     """    
@@ -223,7 +227,7 @@ class Reshape():
     def __call__(self, arr):
         return np.reshape(arr, self.shape)
     
-class Flatten():
+class FlattenN():
     """Transforms a numpy array"""
     def __call__(self, arr):
         return np.reshape(arr, -1)

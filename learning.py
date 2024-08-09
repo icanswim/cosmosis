@@ -373,11 +373,15 @@ class Learn():
                     y = data[self.target]
                 else: 
                     y = getattr(data, self.target)
+                    
                 self.opt.zero_grad()
+                #TODO variable in/out for criterion
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
+                
                 self.metrics.y.append(y.detach().cpu().numpy())
                 self.metrics.y_pred.append(y_pred.detach().cpu().numpy())
+                
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
