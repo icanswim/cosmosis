@@ -58,7 +58,6 @@ class CModel(nn.Module):
             self.layers = nn.ModuleList(self.layers) 
         
         self.weight_init()
-        
         print('CModel loaded...')
                             
     def build(self, **kwargs):
@@ -136,42 +135,46 @@ class CModel(nn.Module):
         return embedded
 
     def forward(self, data):
+        X = []
         filter_keys = []
         if self.y is not None: filter_keys.append(self.y)
         
         if self.embed_param:
             embedded = []
+            cat_dim = 2
+            if self.embed_param['flatten']: cat_dim = 1
+                
             embedded_dict = self.embed_features(data)
-            cat_dim = 1
-            for e, embed in embedded_dict.items(): # mechanism for multiple embedding output
-                if self.embed_param['flatten']:
-                    cat_dim = 0
-                    embed = flatten(embed)
-                e, embedded.append(embed)
-            embedded = cat(embedded, dim=cat_dim) # multiple embedding inputs are simply concatenated
-            filter_keys.append(embedded_dict.keys())
+            for e, embed in embedded_dict.items():
+                embed = flatten(embed, start_dim=1)
+                embedded.append(embed)
+                filter_keys.append(e)
+                
+            embedded = cat(embedded, dim=cat_dim) 
             
         if type(data) == dict:
-            X = []
-            if self.X is not None: # optionally provide list of dataset keys
+            if self.X is not None: 
                 keys = self.X      
             else: 
-                keys = list(data) # mechanism for multiple model inputs
+                keys = list(data) 
                 
-            for k in keys:
-                if k not in filter_keys: # filter out already embedded features and target
-                    X.append(data[k])
-                    
-            X = cat(X, dim=0) # multiple inputs are simply concatenated with any embeddings  
-            
-        elif self.X is not None and hasattr(data, self.X): 
-            attr = self.X
-            X = data.attr
+            for k in keys: 
+                if k not in filter_keys:
+                    X.append(data[k])    
+            X = cat(X, dim=0) 
+        elif self.X is not None and all(hasattr(data, attr) for attr in self.X): 
+            for attr in self.X:
+                if attr not in filter_keys:
+                    X.append(data.attr)
+            X = cat(X, dim=0)
         else:
             X = data
             
-        if self.embed_param: 
-                X = cat([X, embedded])
+        if self.embed_param is not None:
+            if len(X) == 0:
+                X = embedded
+            else:
+                X = cat([X, embedded], dim=-1)
             
         for l in self.layers:
             X = l(X)
