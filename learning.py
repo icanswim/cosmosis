@@ -211,11 +211,17 @@ class Learn():
     Criterion = None implies inference mode
     
     load_model = None/'saved_model.pth'/'saved_model.pk'
+    
     load_embed = None/'model_name'
+    
     squeeze_y_pred = True/False (torch.squeeze(y_pred)) 
         squeeze the model output
+        
     adapt = (D_in, D_out, dropout)
         prepends a trainable linear layer
+
+    weights_only = True/False
+        enable un pickling of models = False (only unpickle trusted files)
         
     the dataset output can either be a dictionary utilizing the form 
     data = {'model_input': {},
@@ -229,8 +235,10 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=None, save_model=False,
-                 batch_size=10, epochs=1, squeeze_y_pred=False, gpu=True, target='y'):
-        
+                 batch_size=10, epochs=1,
+                 gpu=True, weights_only=False, squeeze_y_pred=False, target='y'):
+
+        self.weights_only = weights_only
         self.gpu = gpu
         self.bs = batch_size
         self.squeeze_y_pred = squeeze_y_pred
@@ -251,10 +259,10 @@ class Learn():
         if load_model is not None:
             try: 
                 model = Model(model_param)
-                model.load_state_dict(load('./models/'+load_model))
+                model.load_state_dict(load('./models/'+load_model, weights_only=self.weights_only))
                 print('model loaded from state_dict...')
             except:
-                model = load('./models/'+load_model)
+                model = load('./models/'+load_model, weights_only=self.weights_only)
                 print('model loaded from pickle...')                                                      
         else:
             model = Model(model_param)
@@ -267,7 +275,7 @@ class Learn():
                     
         if adapt is not None: model.adapt(*adapt)
         
-        if self.gpu:
+        if self.gpu == True:
             try:
                 self.model = model.to('cuda:0')
                 print('running model on gpu...')

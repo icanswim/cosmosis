@@ -141,16 +141,15 @@ class CModel(nn.Module):
         
         if self.embed_param:
             embedded = []
-            cat_dim = 2
-            if self.embed_param['flatten']: cat_dim = 1
                 
-            embedded_dict = self.embed_features(data)
-            for e, embed in embedded_dict.items():
-                embed = flatten(embed, start_dim=1)
-                embedded.append(embed)
-                filter_keys.append(e)
-                
-            embedded = cat(embedded, dim=cat_dim) 
+        embedded_dict = self.embed_features(data)
+        for e, embed in embedded_dict.items():
+            if self.embed_param['flatten']:
+                embed = flatten(embed, start_dim=0)
+            embedded.append(embed)
+            filter_keys.append(e)
+            
+        embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
             
         if type(data) == dict:
             if self.X is not None: 
@@ -171,6 +170,9 @@ class CModel(nn.Module):
             X = data
             
         if self.embed_param is not None:
+
+            print('embedded.shape: ', embedded.shape)
+            print('X.shape: ', X.shape)
             if len(X) == 0:
                 X = embedded
             else:
