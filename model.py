@@ -29,29 +29,30 @@ class CModel(nn.Module):
     """
     def __init__(self, model_param):
         super().__init__()
+
         
         self.device = 'cuda:0'
         if 'device' in model_param:  
             self.device = model_param['device']
         
         self.softmax = None
-        if 'X' in model_param:
-            self.X = model_param['X']
-        else:
-            self.X = None
+        if 'softmax' in model_param:
+            self.softmax = model_param['softmax']
 
+        self.data_keys = None
+        if 'data_keys' in model_param:
+            self.data_keys = model_param['data_keys']
+
+        self.y = 'y'
         if 'y' in model_param:
             self.y = model_param['y']
-        else: 
-            self.y = 'y'
 
+        self.embed_param = None
         if 'embed_param' in model_param:
             self.embed_param = model_param['embed_param']
             self.embedding_layer = self.create_embedding_layer()
             if 'flatten' not in self.embed_param:
                 self.embed_param['flatten'] = False
-        else:
-            self.embed_param = None
             
         self.build(**model_param)    
         if hasattr(self, 'layers'):
@@ -135,44 +136,40 @@ class CModel(nn.Module):
         return embedded
 
     def forward(self, data):
+        """data type can be a 
+            dict: {'key': array}, 
+            object: data.key, 
+            array: numpy or torch
+        """
         X = []
-        filter_keys = []
+        filter_keys = [] 
         if self.y is not None: filter_keys.append(self.y)
         
-        if self.embed_param:
+        if self.embed_param is not None:
             embedded = []
                 
-        embedded_dict = self.embed_features(data)
-        for e, embed in embedded_dict.items():
-            if self.embed_param['flatten']:
-                embed = flatten(embed, start_dim=0)
-            embedded.append(embed)
-            filter_keys.append(e)
-            
-        embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
+            embedded_dict = self.embed_features(data)
+            for e, embed in embedded_dict.items():
+                if self.embed_param['flatten']:
+                    embed = flatten(embed, start_dim=0)
+                embedded.append(embed)
+                filter_keys.append(e)
+            embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
             
         if type(data) == dict:
-            if self.X is not None: 
-                keys = self.X      
-            else: 
-                keys = list(data) 
-                
-            for k in keys: 
+            for k in data.keys(): 
                 if k not in filter_keys:
-                    X.append(data[k])    
+                    X.append(data[k])
             X = cat(X, dim=0) 
-        elif self.X is not None and all(hasattr(data, attr) for attr in self.X): 
-            for attr in self.X:
-                if attr not in filter_keys:
-                    X.append(data.attr)
+        elif self.data_keys is not None and all(hasattr(data, key) for key in self.data_keys): 
+            for key in self.keys:
+                if key not in filter_keys:
+                    X.append(data.key)
             X = cat(X, dim=0)
         else:
             X = data
             
         if self.embed_param is not None:
-
-            print('embedded.shape: ', embedded.shape)
-            print('X.shape: ', X.shape)
             if len(X) == 0:
                 X = embedded
             else:
@@ -224,7 +221,7 @@ def tv_model(model_param):
     launcher = getattr(torchvisionmodels, model_param['model_name'])
     model = launcher(**model_param['tv_param'])
 
-    def forward(data): # monkey patch
+    def forward(data): # patch
         return model._forward_impl(data['image'])
     
     model.forward = forward
@@ -249,8 +246,7 @@ class FFNet(CModel):
                               'dropout': [.1, .2, .3, .1, .2],
                               'activation': nn.ReLU}
 
-    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, 
-                      softmax=None, **kwargs):
+    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, **kwargs):
         
         config = FFNet.model_config[model_name]
         self.layers = []
@@ -271,8 +267,6 @@ class FFNet(CModel):
                                         batch_norm=False,
                                         activation=None))
         
-        self.softmax = softmax
-        
         print('FFNet model loaded...')
         
 
@@ -283,32 +277,57 @@ class Flatten(nn.Module):
 
 class GPT(CModel):
 
-    def build(self, d_model=128, nhead=4, num_layers=2, dim_feedforward=128, **kwargs):
-        self.layers = []
-        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
-        self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
-
     def forward(self, data):
+
+        X = []
+        filter_keys = [] 
+        if self.y is not None: filter_keys.append(self.y)
         
-        embedded = []
-        if self.embed_param:
+        if self.embed_param is not None:
+            embedded = []
+                
             embedded_dict = self.embed_features(data)
-            X1 = embedded_dict['X1']
-            X2 = embedded_dict['X2']
+            for e, embed in embedded_dict.items():
+                if self.embed_param['flatten']:
+                    embed = flatten(embed, start_dim=0)
+                embedded.append(embed)
+                filter_keys.append(e)
+            #embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
+            
+        if type(data) == dict:
+            for k in data.keys(): 
+                if k not in filter_keys:
+                    X.append(data[k])
+            #X = cat(X, dim=0) 
+        elif self.data_keys is not None and all(hasattr(data, key) for key in self.data_keys): 
+            for key in self.keys:
+                if key not in filter_keys:
+                    X.append(data.key)
+            X = cat(X, dim=0)
         else:
-            raise Exception('incorrect data/key formation in CModel.forward()...')
+            X = data
+            
+        if self.embed_param is not None:
+            if len(X) == 0:
+                X = embedded
+            else:
+                X = cat([X, embedded], dim=-1)
 
         for l in self.layers:
-            X = l(X1, X2)
+            X = l(X[0], X[1])
             
         if self.softmax is not None:
             X = getattr(F, self.softmax)(X, dim=1)
 
         return X
 
+    def build(self, d_model=128, nhead=4, num_layers=2, **kwargs):
+        self.layers = []
+        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
+        self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
+
 
 class IdentityModel(CModel):
-
     def build(self, *args, **kwargs):
         self.layers = []
         self.layers.append(nn.Identity())

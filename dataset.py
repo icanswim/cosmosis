@@ -279,10 +279,6 @@ class TVDS(CDataset):
     dataset = torchvision datasets class name str ('FakeData')
     tv_param = dict of torchvision.dataset parameters ({'size': 1000})
     """
-    def __init__(self, **kwargs):
-        print('creating torch vision {} dataset...'.format(kwargs['dataset']))
-        super().__init__(**kwargs)
-        
     def __getitem__(self, i):
         image = self.ds[i][0]
         label = self.ds[i][1]
@@ -290,6 +286,7 @@ class TVDS(CDataset):
                 'y': label}
         
     def load_data(self, dataset, tv_param):
+        print('creating torch vision {} dataset...'.format(dataset))
         from torchvision import datasets as tvds
         ds = getattr(tvds, dataset)(**tv_param)
         self.ds_idx = list(range(len(ds)))
@@ -301,12 +298,9 @@ class SKDS(CDataset):
     https://scikit-learn.org/stable/datasets/sample_generators.html
     dataset = sklearn datasets method name str ('make_regression')
     sk_param = dict of sklearn.datasets parameters ({'n_samples': 100})
-    """    
-    def __init__(self, **kwargs):
-        print('creating scikit learn {} dataset...'.format(kwargs['dataset']))
-        super().__init__(**kwargs)
-        
+    """   
     def load_data(self, dataset, sk_param, features_dtype, targets_dtype):
+        print('creating scikit learn {} dataset...'.format(dataset))
         from sklearn import datasets as skds              
         ds = getattr(skds, dataset)(**sk_param)
         datadic = {}
