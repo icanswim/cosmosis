@@ -151,10 +151,10 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=0)
+                    embed = flatten(embed, start_dim=1)
                 embedded.append(embed)
                 filter_keys.append(e)
-            embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
+            embedded = cat(embedded, dim=1 if self.embed_param['flatten'] else 2) 
             
         if type(data) == dict:
             for k in data.keys(): 
@@ -278,7 +278,6 @@ class Flatten(nn.Module):
 class GPT(CModel):
 
     def forward(self, data):
-
         X = []
         filter_keys = [] 
         if self.y is not None: filter_keys.append(self.y)
@@ -303,7 +302,7 @@ class GPT(CModel):
             for key in self.keys:
                 if key not in filter_keys:
                     X.append(data.key)
-            X = cat(X, dim=0)
+            #X = cat(X, dim=0)
         else:
             X = data
             
@@ -314,17 +313,21 @@ class GPT(CModel):
                 X = cat([X, embedded], dim=-1)
 
         for l in self.layers:
-            X = l(X[0], X[1])
+            X = l(X[0], X[1]) #X is a list of embedded inputs
+
+        X = self.linear_head(X[0])
             
         if self.softmax is not None:
             X = getattr(F, self.softmax)(X, dim=1)
 
         return X
 
-    def build(self, d_model=128, nhead=4, num_layers=2, **kwargs):
+    def build(self, d_model=0, n_head=0, num_layers=0, d_vocab=0, **kwargs):
         self.layers = []
-        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead)
+        decoder_layer = nn.TransformerDecoderLayer(d_model, n_head)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
+        self.linear_head = self.ff_unit(d_model, d_vocab, activation=None, 
+                                                batch_norm=True, dropout=None)
 
 
 class IdentityModel(CModel):
