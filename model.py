@@ -151,20 +151,20 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=1)
+                    embed = flatten(embed, start_dim=0)
                 embedded.append(embed)
                 filter_keys.append(e)
-            embedded = cat(embedded, dim=1 if self.embed_param['flatten'] else 2) 
+            embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
             
         if type(data) == dict:
             for k in data.keys(): 
                 if k not in filter_keys:
                     X.append(data[k])
             X = cat(X, dim=0) 
-        elif self.data_keys is not None and all(hasattr(data, key) for key in self.data_keys): 
-            for key in self.keys:
-                if key not in filter_keys:
-                    X.append(data.key)
+        elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
+            for k in self.data_keys:
+                if k not in filter_keys:
+                    X.append(data.k)
             X = cat(X, dim=0)
         else:
             X = data
@@ -173,7 +173,7 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                X = cat([X, embedded], dim=-1)
+                X = cat([X, embedded], dim=0)
             
         for l in self.layers:
             X = l(X)
@@ -294,7 +294,7 @@ class GPT(CModel):
             #embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
             
         if type(data) == dict:
-            for k in data.keys(): 
+            for k in data.keys():
                 if k not in filter_keys:
                     X.append(data[k])
             #X = cat(X, dim=0) 
@@ -309,25 +309,29 @@ class GPT(CModel):
         if self.embed_param is not None:
             if len(X) == 0:
                 X = embedded
-            else:
-                X = cat([X, embedded], dim=-1)
+           #else: X = cat([X, embedded], dim=-1)
 
         for l in self.layers:
             X = l(X[0], X[1]) #X is a list of embedded inputs
 
-        X = self.linear_head(X[0])
+        if self.linear_head is not None:
+            X = self.linear_head(X)
             
         if self.softmax is not None:
-            X = getattr(F, self.softmax)(X, dim=1)
+            X = getattr(F, self.softmax)(X[0], dim=-1)
 
         return X
 
-    def build(self, d_model=0, n_head=0, num_layers=0, d_vocab=0, **kwargs):
+    def build(self, d_model=0, n_head=0, num_layers=0, d_vocab=0, linear_head=None, **kwargs):
+        
         self.layers = []
         decoder_layer = nn.TransformerDecoderLayer(d_model, n_head)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
-        self.linear_head = self.ff_unit(d_model, d_vocab, activation=None, 
-                                                batch_norm=True, dropout=None)
+        if linear_head is not None:
+            self.linear_head = self.ff_unit(d_model, d_vocab, activation=None, 
+                                                    batch_norm=True, dropout=None)
+        else: 
+            self.linear_head = None
 
 
 class IdentityModel(CModel):

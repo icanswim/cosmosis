@@ -6,7 +6,7 @@ from pandas.api.types import CategoricalDtype
 import numpy as np
 
 from torch.utils.data import Dataset, ConcatDataset
-from torch import as_tensor, squeeze, is_tensor, cat
+from torch import as_tensor, squeeze, is_tensor, cat, float32
 
 from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -126,7 +126,7 @@ class CDataset(Dataset, ABC):
                     out = T(out)
                 
             output.append(out)
-            
+        
         if len(output) == 1: return output[0] 
         elif is_tensor(output[0]): return cat(output)
         else: return np.concatenate(output)

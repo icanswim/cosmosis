@@ -373,6 +373,8 @@ class Learn():
             y_pred = self.model(data)
      
             if self.squeeze_y_pred: y_pred = squeeze(y_pred)
+
+            print('y_pred: ', y_pred, y_pred.shape)
                 
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
