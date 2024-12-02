@@ -313,7 +313,7 @@ class GPT(CModel):
         if self.probs:
             X = F.softmax(X, dim=-1)
 
-        if self.tokens:
+        if self.tokens: # TODO batchify
             X = multinomial(X, num_samples=1)
 
         if self.transpose: # (batch, block_size, classes) --> (batch, classes, block_size)

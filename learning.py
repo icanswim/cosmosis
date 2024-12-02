@@ -66,10 +66,12 @@ class Metrics():
             return normalized / normalized.sum()
         
         if self.metric_name == 'transformer':
-            last_y = np.squeeze(y[-1:])
-            last_y_pred = np.apply_along_axis(softmax_overflow, 0, np.squeeze(y_pred[-1:]))
-            self.display_y_pred = np.apply_along_axis(np.argmax, 0, last_y_pred).tolist()
-            self.display_y = last_y.flatten().tolist()
+            y = np.squeeze(y[-1:]).flatten().tolist()
+            self.display_y = self.decoder(y)
+            y_pred = np.apply_along_axis(softmax_overflow, 0, np.squeeze(y_pred[-1:]))
+            y_pred = np.apply_along_axis(np.argmax, 0, y_pred).tolist()
+            self.display_y_pred = self.decoder(y_pred)
+            
         else:
             if self.metric_name == 'roc_auc_score':
                 y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
@@ -82,8 +84,6 @@ class Metrics():
                 self.metric_train_log.append(score)
             else:
                 self.metric_val_log.append(score)
-
-            self.display_y, self.display_y_pred = np.squeeze(y[-5:]), np.squeeze(y_pred[-5:])
 
         self.y, self.y_pred = [], []
         
@@ -262,6 +262,9 @@ class Learn():
         self.DataLoader = DataLoader
         
         self.metrics = Metrics(**metrics_param)
+        if hasattr(self.train_ds, 'encoding'):
+            self.metrics.decoder = self.train_ds.encoding.decode
+        
         self.metrics.log('model: {}\n{}'.format(Model, model_param))
         self.metrics.log('dataset: {}\n{}'.format(Datasets, ds_param))
         self.metrics.log('sampler: {}\n{}'.format(Sampler, sample_param))
@@ -421,27 +424,28 @@ class Learn():
             self.metrics.status_report()
             
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
-    
+        
         if len(Datasets) == 1:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = self.test_ds = self.train_ds
             self.sampler = Sampler(dataset_idx=self.train_ds.ds_idx, 
-                                   **sample_param)
+                                       **sample_param)
+
         if len(Datasets) == 2:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = self.train_ds
             self.test_ds = Datasets[1](**ds_param['test_param'])
             self.sampler = Sampler(train_idx=self.train_ds.ds_idx, 
-                                   test_idx=self.test_ds.ds_idx,
-                                   **sample_param)
+                                       test_idx=self.test_ds.ds_idx,
+                                           **sample_param)
         if len(Datasets) == 3:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = Datasets[1](**ds_param['val_param'])
             self.test_ds = Datasets[2](**ds_param['test_param'])
             self.sampler = Sampler(train_idx=self.train_ds.ds_idx, 
-                                   val_idx=self.val_ds.ds_idx, 
-                                   test_idx=self.test_ds.ds_idx,
-                                   **sample_param)
+                                       val_idx=self.val_ds.ds_idx, 
+                                           test_idx=self.test_ds.ds_idx,
+                                               **sample_param)
 
 
         
