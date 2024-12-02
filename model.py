@@ -1,6 +1,6 @@
 from math import sqrt
 
-from torch import nn, cat, squeeze, softmax, Tensor, flatten, sigmoid, max, mean
+from torch import nn, cat, squeeze, Tensor, flatten, sigmoid, max, mean, multinomial, transpose
 from torch.nn import functional as F
 
 # torchvision models are imported by its launcher tv_models()
@@ -34,10 +34,6 @@ class CModel(nn.Module):
         self.device = 'cuda:0'
         if 'device' in model_param:  
             self.device = model_param['device']
-        
-        self.softmax = None
-        if 'softmax' in model_param:
-            self.softmax = model_param['softmax']
 
         self.data_keys = None
         if 'data_keys' in model_param:
@@ -178,9 +174,6 @@ class CModel(nn.Module):
         for l in self.layers:
             X = l(X)
             
-        if self.softmax is not None:
-            X = getattr(F, self.softmax)(X, dim=1)
-
         return X
     
     def adapt(self, in_channels, out_channels, dropout):
@@ -312,24 +305,32 @@ class GPT(CModel):
            #else: X = cat([X, embedded], dim=-1)
 
         for l in self.layers:
-            X = l(X[0], X[1]) #X is a list of embedded inputs
+            X = l(X[0], X[1]) # X is a list of embedded inputs
 
         if self.linear_head is not None:
             X = self.linear_head(X)
-            
-        if self.softmax is not None:
-            X = getattr(F, self.softmax)(X[0], dim=-1)
 
+        if self.probs:
+            X = F.softmax(X, dim=-1)
+
+        if self.tokens:
+            X = multinomial(X, num_samples=1)
+
+        if self.transpose: # (batch, block_size, classes) --> (batch, classes, block_size)
+            X = transpose(X, 1, 2)
+              
         return X
 
-    def build(self, d_model=0, n_head=0, num_layers=0, d_vocab=0, linear_head=None, **kwargs):
-        
+    def build(self, d_model=0, n_head=0, num_layers=0, d_vocab=0, 
+                  linear_head=None, probs=False, tokens=False, transpose=False, **kwargs):
+
+        self.probs, self.tokens, self.transpose = probs, tokens, transpose
         self.layers = []
         decoder_layer = nn.TransformerDecoderLayer(d_model, n_head)
         self.layers.append(nn.TransformerDecoder(decoder_layer, num_layers))
         if linear_head is not None:
             self.linear_head = self.ff_unit(d_model, d_vocab, activation=None, 
-                                                    batch_norm=True, dropout=None)
+                                                    batch_norm=False, dropout=.1)
         else: 
             self.linear_head = None
 

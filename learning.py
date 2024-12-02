@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 from torch import no_grad, save, load, from_numpy, squeeze
 from torch.utils.data import Sampler, DataLoader
 
-from sklearn import metrics
+from sklearn import metrics as sk_metrics
 
 
 class Metrics():
 
-    def __init__(self, report_interval=10, sk_metric_name=None, 
-                     log_plot=False, min_lr=.00125, sk_param={}):
+    def __init__(self, report_interval=10, metric_name=None, 
+                     log_plot=False, min_lr=.00125, metric_param={}):
         
         self.start = datetime.now()
         self.report_time = self.start
@@ -29,11 +29,14 @@ class Metrics():
         self.epoch, self.e_loss, self.predictions = 0, [], []
         self.train_loss, self.val_loss, self.lr_log = [], [], []
         
-        self.sk_metric_name, self.sk_param = sk_metric_name, sk_param
-        self.skm, self.sk_train_log, self.sk_val_log = None, [], []
-        self.y, self.last_y, self.y_pred, self.last_y_pred = [], [], [], []
-        if self.sk_metric_name is not None:
-            self.skm = getattr(metrics, self.sk_metric_name)
+        self.metric_name, self.metric_param = metric_name, metric_param
+        self.metric_func, self.metric_train_log, self.metric_val_log = None, [], []
+        self.y, self.y_pred, = [], []
+        if self.metric_name is not None:
+            if self.metric_name == 'transformer':
+                self.metric_func = True
+            else:
+                self.metric_func = getattr(sk_metrics, self.metric_name)
             
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         self.log('\nNew Experiment: {}'.format(self.start))
@@ -45,7 +48,15 @@ class Metrics():
         print('inference {} complete and saved to csv...'.format(self.start))
 
     def metric(self, flag):
-        """TODO multiple sk metrics"""
+        """TODO multiple metrics"""
+        
+        y = np.concatenate(self.y) 
+        y_pred = np.concatenate(self.y_pred)
+        self.display_y = y[-5:]
+        self.display_y_pred = y_pred[-5:]
+        
+        if self.metric_name == None: 
+            return
     
         def softmax(x): return np.exp(x)/sum(np.exp(x))
 
@@ -53,24 +64,27 @@ class Metrics():
             x_max = x.max()
             normalized = np.exp(x - x_max)
             return normalized / normalized.sum()
-
-        y = np.concatenate(self.y)
-        y_pred = np.concatenate(self.y_pred)
         
-        if self.sk_metric_name is not None:
-            if self.sk_metric_name == 'roc_auc_score' and y_pred.ndim == 2:
+        if self.metric_name == 'transformer':
+            last_y = np.squeeze(y[-1:])
+            last_y_pred = np.apply_along_axis(softmax_overflow, 0, np.squeeze(y_pred[-1:]))
+            self.display_y_pred = np.apply_along_axis(np.argmax, 0, last_y_pred).tolist()
+            self.display_y = last_y.flatten().tolist()
+        else:
+            if self.metric_name == 'roc_auc_score':
                 y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
-            
-            if self.sk_metric_name == 'accuracy_score' and y_pred.ndim == 2:
+            if self.metric_name == 'accuracy_score':
                 y_pred = np.argmax(y_pred, axis=1)
-
-            score = self.skm(y, y_pred, **self.sk_param)
-            if flag == 'train':
-                self.sk_train_log.append(score)
             else:
-                self.sk_val_log.append(score)
+                score = self.metric_func(y, y_pred, **self.metric_param)
 
-        self.last_y, self.last_y_pred = np.squeeze(y[-5:]), np.squeeze(y_pred[-5:])
+            if flag == 'train':
+                self.metric_train_log.append(score)
+            else:
+                self.metric_val_log.append(score)
+
+            self.display_y, self.display_y_pred = np.squeeze(y[-5:]), np.squeeze(y_pred[-5:])
+
         self.y, self.y_pred = [], []
         
     def loss(self, flag, loss):
@@ -92,11 +106,11 @@ class Metrics():
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
             print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('last 5 targets: \n{}'.format(self.last_y))
-            print('last 5 predictions: \n{}'.format(self.last_y_pred))
-            if self.skm is not None:
-                print('sklearn train metric: {}, sklearn validation metric: {}'.format(
-                                                    self.sk_train_log[-1], self.sk_val_log[-1]))
+            print('last targets: \n{}'.format(self.display_y))
+            print('last predictions: \n{}'.format(self.display_y_pred))
+            if len(self.metric_train_log) != 0:
+                print('{} train score: {}, validation score: {}'.format(
+                    self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
             self.report_time = datetime.now()
         
         if now:
@@ -111,14 +125,14 @@ class Metrics():
         print('\n...........................')
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
-        print('last 5 targets: \n{}'.format(self.last_y))
-        print('last 5 predictions: \n{}'.format(self.last_y_pred))
+        print('last targets: \n{}'.format(self.display_y))
+        print('last predictions: \n{}'.format(self.display_y_pred))
         
-        if self.skm is not None:
-            self.log('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
-            print('sklearn test metric: \n{} \n'.format(self.sk_val_log[-1]))
-            logs = zip(self.train_loss, self.val_loss, self.lr_log, self.sk_val_log)
-            cols = ['train_loss','validation_loss','learning_rate',self.sk_metric_name]
+        if len(self.metric_train_log) != 0:
+            self.log('{} test metric: \n{} \n'.format(self.metric_name, self.metric_val_log[-1]))
+            print('{} test metric: \n{} \n'.format(self.metric_name, self.metric_val_log[-1]))
+            logs = zip(self.train_loss, self.val_loss, self.lr_log, self.metric_val_log)
+            cols = ['train_loss','validation_loss','learning_rate',self.metric_name]
         else:
             logs = zip(self.train_loss, self.val_loss, self.lr_log)
             cols = ['train_loss','validation_loss','learning_rate']
@@ -373,8 +387,6 @@ class Learn():
             y_pred = self.model(data)
      
             if self.squeeze_y_pred: y_pred = squeeze(y_pred)
-
-            print('y_pred: ', y_pred, y_pred.shape)
                 
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred.detach().cpu().numpy())
@@ -386,6 +398,7 @@ class Learn():
                     
                 self.opt.zero_grad()
                 #TODO variable in/out for criterion
+            
                 b_loss = self.criterion(y_pred, y)
                 e_loss += b_loss.item()
                 
