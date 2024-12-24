@@ -122,9 +122,9 @@ class Metrics():
             print('\n...........................')
             print('learning time: {}'.format(datetime.now()-self.start))
             print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
-            print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('last targets: \n{}'.format(self.display_y))
-            print('last predictions: \n{}'.format(self.display_y_pred))
+            print('train loss: {}, val loss: {}\n'.format(self.train_loss[-1], self.val_loss[-1]))
+            print('last targets: \n{}\n'.format(self.display_y))
+            print('last predictions: \n{}\n'.format(self.display_y_pred))
             if len(self.metric_train_log) != 0:
                 print('{} train score: {}, validation score: {}'.format(
                     self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
@@ -142,7 +142,7 @@ class Metrics():
         print('\n...........................')
         self.log('learning time: {} \n'.format(elapsed))
         print('learning time: {}'.format(elapsed))
-        print('last predictions: \n{}'.format(self.display_y_pred))
+        print('last predictions: \n{}\n'.format(self.display_y_pred))
 
         if self.flag != 'infer': 
             print('last targets: \n{}'.format(self.display_y))
@@ -175,7 +175,7 @@ class Selector(Sampler):
                 (train_split,val_split) remainder is test_split or None
     """
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
-                 splits=(.7,.15), set_seed=False, subset=False):
+                 splits=(.7,.15), set_seed=False, subset=False, block_size=1):
         self.set_seed = set_seed
         
         if dataset_idx == None:  
@@ -231,8 +231,6 @@ class Selector(Sampler):
         return self
     
     def shuffle_train_val_idx(self):
-        if self.set_seed:
-            random.seed(self.set_seed)
         random.shuffle(self.val_idx)
         random.shuffle(self.train_idx)
         random.seed()
@@ -430,8 +428,10 @@ class Learn():
                     self.opt.step()
                     
                 self.metrics.y.append(y.detach().cpu().numpy())
+                
             self.metrics.y_pred.append(y_pred.detach().cpu().numpy())
-        self.metrics.loss(flag, e_loss/i)
+            
+        if e_loss != 0: self.metrics.loss(flag, e_loss/i)
         self.metrics.metric(flag)
         
         if flag == 'val': 
