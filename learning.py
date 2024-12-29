@@ -76,13 +76,13 @@ class Metrics():
             
         if self.metric_name in ['roc_auc_score']:
             y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
-            self.display_y_pred = y_pred[-5:]
+            self.display_y_pred = y_pred
             
         elif self.metric_name in ['accuracy_score']:
             y_pred = np.argmax(y_pred, axis=1)
-            self.display_y_pred = y_pred[-5:]
+            self.display_y_pred = y_pred
         else:
-            self.display_y_pred = y_pred[-5:]
+            self.display_y_pred = y_pred
 
         if flag == 'infer':
             self.predictions.append(y_pred)
