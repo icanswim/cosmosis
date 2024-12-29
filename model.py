@@ -147,10 +147,10 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=0)
+                    embed = flatten(embed, start_dim=1)
                 embedded.append(embed)
                 filter_keys.append(e)
-            embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
+            embedded = cat(embedded, dim=1 if self.embed_param['flatten'] else 2) 
             
         if type(data) == dict:
             for k in data.keys(): 
@@ -169,7 +169,7 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                X = cat([X, embedded], dim=0)
+                X = cat([X, embedded], dim=1)
             
         for l in self.layers:
             X = l(X)
