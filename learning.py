@@ -61,17 +61,20 @@ class Metrics():
             x_max = x.max()
             normalized = np.exp(x - x_max)
             return normalized / normalized.sum()
-
-        y_pred = np.concatenate(self.y_pred)
-
+            
+        y_pred = self.y_pred
+        
         if self.metric_name == 'transformer':
-            y_pred = np.apply_along_axis(softmax_overflow, 0, np.squeeze(y_pred[-1]))
+            y_pred = y_pred[-1]
+            if y_pred.ndim == 3: y_pred = y_pred[-1]
+            y_pred = np.apply_along_axis(softmax_overflow, 0, np.squeeze(y_pred))
             y_pred = np.apply_along_axis(np.argmax, 0, y_pred).squeeze().flatten().tolist()
-            if flag != 'infer': y_pred = y_pred[-50:] 
             y_pred = self.decoder(y_pred)
             self.display_y_pred = y_pred
+        else:
+            y_pred = np.concatenate(y_pred)
             
-        elif self.metric_name in ['roc_auc_score']:
+        if self.metric_name in ['roc_auc_score']:
             y_pred = np.apply_along_axis(softmax_overflow, 1, y_pred)
             self.display_y_pred = y_pred[-5:]
             
@@ -85,12 +88,15 @@ class Metrics():
             self.predictions.append(y_pred)
             return
 
-        y = np.concatenate(self.y)
-
+        y = self.y
+        
         if self.metric_name == 'transformer':
-            y = y.squeeze().flatten().tolist()
-            self.display_y = self.decoder(y)[-50:]
+            y = y[-1]
+            if y.ndim == 2: y = y[-1]
+            y = y.squeeze().flatten().tolist() 
+            self.display_y = self.decoder(y)
         else:
+            y = np.concatenate(self.y)
             self.display_y = y[-5:]
         
         if self.metric_func != None:
@@ -175,7 +181,7 @@ class Selector(Sampler):
                 (train_split,val_split) remainder is test_split or None
     """
     def __init__(self, dataset_idx=None, train_idx=None, val_idx=None, test_idx=None,
-                 splits=(.7,.15), set_seed=False, subset=False, block_size=1):
+                 splits=(.7,.15), set_seed=False, subset=False):
         self.set_seed = set_seed
         
         if dataset_idx == None:  
