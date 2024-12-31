@@ -147,21 +147,21 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=1)
+                    embed = flatten(embed, start_dim=0)
                 embedded.append(embed)
                 filter_keys.append(e)
-            embedded = cat(embedded, dim=1 if self.embed_param['flatten'] else 2) 
+            embedded = cat(embedded, dim=-1) 
             
         if type(data) == dict:
             for k in data.keys(): 
                 if k not in filter_keys:
                     X.append(data[k])
-            X = cat(X, dim=0) 
+            X = cat(X, dim=-1) 
         elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
             for k in self.data_keys:
                 if k not in filter_keys:
                     X.append(data.k)
-            X = cat(X, dim=0)
+            X = cat(X, dim=-1)
         else:
             X = data
             
@@ -169,7 +169,9 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                X = cat([X, embedded], dim=1)
+                print('X.shape: ', X.shape)
+                print('embedded.shape: ', embedded.shape)
+                X = cat([X, embedded], dim=-1)
             
         for l in self.layers:
             X = l(X)
@@ -284,18 +286,18 @@ class GPT(CModel):
                     embed = flatten(embed, start_dim=0)
                 embedded.append(embed)
                 filter_keys.append(e)
-            #embedded = cat(embedded, dim=0 if self.embed_param['flatten'] else 1) 
+            #embedded = cat(embedded, dim=-1) 
             
         if type(data) == dict:
             for k in data.keys():
                 if k not in filter_keys:
                     X.append(data[k])
-            #X = cat(X, dim=0) 
+            #X = cat(X, dim=-1) 
         elif self.data_keys is not None and all(hasattr(data, key) for key in self.data_keys): 
             for key in self.keys:
                 if key not in filter_keys:
                     X.append(data.key)
-            #X = cat(X, dim=0)
+            #X = cat(X, dim=-1)
         else:
             X = data
             

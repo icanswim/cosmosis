@@ -128,8 +128,8 @@ class CDataset(Dataset, ABC):
             output.append(out)
         
         if len(output) == 1: return output[0] 
-        elif is_tensor(output[0]): return cat(output)
-        else: return np.concatenate(output)
+        elif is_tensor(output[0]): return cat(output, dim=-1)
+        else: return np.concatenate(output, axis=-1)
 
 
 class ExampleDataset(CDataset):
