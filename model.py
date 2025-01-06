@@ -147,7 +147,7 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=0)
+                    embed = flatten(embed, start_dim=1)
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
@@ -169,8 +169,6 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                print('X.shape: ', X.shape)
-                print('embedded.shape: ', embedded.shape)
                 X = cat([X, embedded], dim=-1)
             
         for l in self.layers:
@@ -283,7 +281,7 @@ class GPT(CModel):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=0)
+                    embed = flatten(embed, start_dim=1)
                 embedded.append(embed)
                 filter_keys.append(e)
             #embedded = cat(embedded, dim=-1) 
