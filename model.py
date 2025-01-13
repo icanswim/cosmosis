@@ -269,6 +269,10 @@ class Flatten(nn.Module):
 
 
 class GPT(CModel):
+    """
+    Formal Algorithms for Transformers -- https://arxiv.org/pdf/2207.09238
+    FlashAttention-2 -- https://arxiv.org/pdf/2307.08691
+    """
 
     def forward(self, data):
         X = []

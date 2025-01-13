@@ -102,7 +102,7 @@ class CDataset(Dataset, ABC):
         return len(self.ds_idx)
     
     def __getitem__(self, i):         
-        """if no input_dict is give then the dataset's native __getitem__ is used"""
+        """if no input_dict is given then the dataset's native __getitem__ is used"""
         if self.input_dict == None:
             return self.ds[i]
 
