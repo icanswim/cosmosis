@@ -8,6 +8,7 @@ mkdir logs
 mkdir models
 conda env create -f environment.yml
 conda activate cosmo
+pip install torcheval
 jupyter lab
 
 ##instructions for the manual creation of conda environment
@@ -23,5 +24,6 @@ conda install -c conda-forge matplotlib
 conda install -c conda-forge scipy pandas scikit-learn
 conda install -c conda-forge jupyterlab h5py git
 conda install -c conda-forge numpy
+pip install torcheval
 jupyter lab
 
