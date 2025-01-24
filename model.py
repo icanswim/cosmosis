@@ -147,7 +147,7 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=1)
+                    embed = flatten(embed, start_dim=0)
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
@@ -156,7 +156,7 @@ class CModel(nn.Module):
             for k in data.keys(): 
                 if k not in filter_keys:
                     X.append(data[k])
-            X = cat(X, dim=-1) 
+            if len(X) != 0: X = cat(X, dim=-1) 
         elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
             for k in self.data_keys:
                 if k not in filter_keys:

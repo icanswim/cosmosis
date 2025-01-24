@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, squeeze, cat
+from torch import no_grad, save, load, from_numpy, cat
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -19,6 +19,8 @@ from sklearn import metrics as sk_metrics
 
 
 class Metrics():
+    """
+    """
     def __init__(self, report_interval=10, metric_name=None, 
                      log_plot=False, min_lr=.00125, metric_param={}):
         
@@ -42,7 +44,7 @@ class Metrics():
                 self.metric_func = None
             elif self.metric_name in ['accuracy_score','roc_auc_score']:
                 self.metric_func = getattr(sk_metrics, self.metric_name)
-            elif self.metric_name in ['auc','multiclass_accuracy']:
+            elif self.metric_name in ['auc','multiclass_accuracy','multiclass_auprc']:
                 self.metric_func = getattr(t_metrics, self.metric_name)
             else:
                 raise Exception('hey just what you see pal...')
@@ -50,18 +52,19 @@ class Metrics():
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         self.log('\nNew Experiment: {}'.format(self.start))
     
-    def infer(self):          
-                    
+    def infer(self):              
         now = datetime.now()
+        print('\n.....................\n')
         self.log('total learning time: {} \n'.format(now - self.start))
-        self.print('total learning time: {} \n'.format(now - self.start))
+        print('total learning time: {}'.format(now - self.start))
         
         if self.metric_name != 'transformer':
-            predictions = np.concatenate(self.predictions).squeeze()
+            self.predictions = np.concatenate(self.predictions).squeeze()
             
-        print('self.predictions)
+        print('self.predictions[-1]: ', self.predictions[-1])
+        print('self.predictions.shape: ', self.predictions.shape)
         
-        pd.DataFrame(self.y_pred).to_csv(
+        pd.DataFrame(self.predictions).to_csv(
                         './logs/{}_inference.csv'.format(self.start), index=True)
         
         print('inference {} complete and saved to csv...'.format(self.start))
@@ -81,10 +84,11 @@ class Metrics():
         y_pred = cat(self.y_pred, dim=0)
         y = cat(self.y, dim=0)
         
-        if self.metric_name in ['roc_auc_score','auc','accuracy_score']:
+        if self.metric_name in ['roc_auc_score','auc','accuracy_score',
+                                    'multiclass_accuracy','multiclass_auprc']:
             y_pred = F.softmax(y_pred, dim=-1)
 
-        if self.metric_name in ['accuracy_score']:
+        if self.metric_name in ['accuracy_score','auc','multiclass_accuracy']:
             y_pred = y_pred.argmax(dim=-1)
 
         if self.metric_name in ['accuracy_score','roc_auc_score']:
@@ -92,7 +96,12 @@ class Metrics():
             y = y.detach().cpu().numpy()
         
         if self.metric_func != None:
-            score = self.metric_func(y, y_pred, **self.metric_param)
+            if self.metric_name in ['multiclass_accuracy','auc','multiclass_auprc']: #torcheval
+                score = self.metric_func(y_pred, y, **self.metric_param)
+            else:
+                score = self.metric_func(y, y_pred, **self.metric_param) #sklearn
+            score = score.item()
+            
             if flag == 'train':
                 self.metric_train_log.append(score)
             else:
@@ -101,22 +110,27 @@ class Metrics():
     def log(self, message):
         logging.info(message)
         
-    def report(self, flag, now=False):
+    def report(self, last_y_pred, last_y=None, now=False):
         def print_report():
             
             now = datetime.now()
             tot_elapsed = now - self.start
             self.report_time = now
+            print('\n.....................\n')
+            print('total elapsed time: {}'.format(tot_elapsed))
+            print('epoch: {}'.format(self.epoch))
             
-            print('self.y_pred[-1].shape: ', self.y_pred[-1].shape)
-            print('self.y[-1].shape: ', self.y[-1].shape)
-            print('total elapsed learning time: {}'.format(tot_elapsed))
-            print('train loss: {}, val loss: {}\n'.format(self.train_loss[-1], self.val_loss[-1]))
-            print('epoch: {}, lr: {}'.format(self.epoch, self.lr_log[-1]))
-
-            if len(self.metric_train_log) != 0:
-                print('{} train score: {}, validation score: {}'.format(
-                    self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
+            if len(self.predictions) > 0:
+                print('self.predictions[-1]: ', self.predictions[-1])
+            else:    
+                print('last_y_pred[-1]: ', last_y_pred[-1])
+                print('last_y[-1]: ', last_y[-1])
+                print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
+                print('lr: {}'.format(self.lr_log[-1]))
+            
+                if len(self.metric_train_log) != 0:
+                    print('{} train score: {}, validation score: {}'.format(
+                        self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
         
         if now is True:
             print_report()
@@ -127,7 +141,6 @@ class Metrics():
                 print_report()
 
     def loss(self, flag):
-        
         if flag == 'train':
             self.train_loss.append(self.e_loss)
         if flag == 'val':
@@ -141,17 +154,17 @@ class Metrics():
     def final(self):
 
         now = datetime.now()
-            
-        self.log('total learning time: {} \n'.format(now - self.start))
-        print('total learning time: {} \n'.format(now - self.start))
+        print('\n........final........\n')    
+        self.log('total learning time: {}'.format(now - self.start))
+        print('total learning time: {}'.format(now - self.start))
         
         if len(self.test_loss) != 0:
-            self.log('test loss: {} \n'.format(self.test_loss))
-            print('test loss: {} \n'.format(self.test_loss[-1]))
+            self.log('test loss: {}'.format(self.test_loss))
+            print('test loss: {}'.format(self.test_loss[-1]))
             
         if len(self.metric_train_log) != 0:
-            self.log('{} test metric: \n{} \n'.format(self.metric_name, self.metric_val_log[-1]))
-            print('{} test metric: \n{} \n'.format(self.metric_name, self.metric_val_log[-1]))
+            self.log('{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
+            print('{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
             logs = zip(self.train_loss, self.val_loss, self.lr_log, self.metric_val_log)
             cols = ['train_loss','validation_loss','learning_rate',self.metric_name]
         else:
@@ -338,8 +351,7 @@ class Learn():
                 with no_grad():
                     self.run('val')
                     if e > 1 and self.metrics.lr_log[-1] <= self.metrics.min_lr:
-                        self.metrics.final()
-                        print('\n early stopping!  learning rate is below the set minimum...')
+                        print('early stopping!  learning rate is below the set minimum...')
                         break
                 
             with no_grad():
@@ -351,6 +363,7 @@ class Learn():
             with no_grad():
                 for e in range(epochs):
                     self.run('infer')
+                self.metrics.infer()
                     
         if save_model:
             if type(save_model) == str:
@@ -404,10 +417,14 @@ class Learn():
                 else: 
                     data = data.to('cuda:0', non_blocking=True)
                 y_pred = self.model(data)
+                if self.metrics.metric_func is not None:
+                    self.metrics.y_pred.append(y_pred) # one batch
             
             if flag != 'infer':
                 if type(data) == dict: y = data[self.target]
                 else: y = getattr(data, self.target)
+                if self.metrics.metric_func is not None:
+                    self.metrics.y.append(y)
                 
                 self.opt.zero_grad()
                 #TODO variable in/out for criterion
@@ -417,17 +434,17 @@ class Learn():
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
-                    
-                self.metrics.metric(flag, y_pred, y)
             else:
-                self.metrics.predictions.append(y_pred)
+                self.metrics.predictions.append(y_pred.detach().cpu().numpy())
+                y = None
 
         if flag == 'val': 
             self.scheduler.step(self.metrics.e_loss)
             self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
-
+            
+        self.metrics.metric(flag)
         self.metrics.loss(flag)
-        self.metrics.report(flag)
+        self.metrics.report(y_pred, y)
         self.metrics.reset_epoch()
                 
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
