@@ -94,52 +94,60 @@ class Metrics():
         if self.metric_name in ['accuracy_score','roc_auc_score']:
             y_pred = y_pred.detach().cpu().numpy()
             y = y.detach().cpu().numpy()
+
+        if self.metric_name in ['multiclass_accuracy','auc','multiclass_auprc']: #torcheval
+            score = self.metric_func(y_pred, y, **self.metric_param)
+        else:
+            score = self.metric_func(y, y_pred, **self.metric_param) #sklearn
+        score = score.item()
         
-        if self.metric_func != None:
-            if self.metric_name in ['multiclass_accuracy','auc','multiclass_auprc']: #torcheval
-                score = self.metric_func(y_pred, y, **self.metric_param)
-            else:
-                score = self.metric_func(y, y_pred, **self.metric_param) #sklearn
-            score = score.item()
-            
-            if flag == 'train':
-                self.metric_train_log.append(score)
-            else:
-                self.metric_val_log.append(score)
+        if flag == 'train':
+            self.metric_train_log.append(score)
+        else:
+            self.metric_val_log.append(score)
         
     def log(self, message):
         logging.info(message)
         
-    def report(self, last_y_pred, last_y=None, now=False):
-        def print_report():
+    def report(self, _y_pred, _y=None):
             
-            now = datetime.now()
-            tot_elapsed = now - self.start
-            self.report_time = now
-            print('\n.....................\n')
-            print('total elapsed time: {}'.format(tot_elapsed))
-            print('epoch: {}'.format(self.epoch))
+        if self.epoch == 0: return
             
-            if len(self.predictions) > 0:
-                print('self.predictions[-1]: ', self.predictions[-1])
-            else:    
-                print('last_y_pred[-1]: ', last_y_pred[-1])
-                print('last_y[-1]: ', last_y[-1])
-                print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-                print('lr: {}'.format(self.lr_log[-1]))
+        now = datetime.now()
+        elapsed = now - self.report_time
+        if elapsed.total_seconds() < self.report_interval: return
             
-                if len(self.metric_train_log) != 0:
-                    print('{} train score: {}, validation score: {}'.format(
-                        self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
-        
-        if now is True:
-            print_report()
-        else:
-            now = datetime.now()
-            elapsed = now - self.report_time
-            if elapsed.total_seconds() > self.report_interval:
-                print_report()
+        tot_elapsed = now - self.start
+        print('\n.....................\n')
+        print('total elapsed time: {}'.format(tot_elapsed))
+        print('epoch: {}'.format(self.epoch))
+        self.report_time = now
 
+        if len(self.predictions) > 0: 
+            print('self.predictions[-1]: ', self.predictions[-1])
+            return
+
+        #get the last instance from the batch
+        y_pred = _y_pred[-1]
+        y = _y[-1]
+        
+        if self.metric_name == 'transformer':
+            y_pred = F.softmax(y_pred, dim=-1)
+            y_pred = y_pred.argmax(dim=0)
+            y_pred = y_pred.detach().cpu().numpy().tolist()
+            y_pred = self.decoder(y_pred)
+            y = y.detach().cpu().numpy().tolist()
+            y = self.decoder(y)
+            
+        print('y_pred: ', y_pred)
+        print('y: ', y)
+        print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
+        print('lr: {}'.format(self.lr_log[-1]))
+    
+        if len(self.metric_train_log) != 0:
+            print('{} train score: {}, validation score: {}'.format(
+                self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
+    
     def loss(self, flag):
         if flag == 'train':
             self.train_loss.append(self.e_loss)
@@ -152,7 +160,6 @@ class Metrics():
         self.e_loss, self.y, self.y_pred = 0, [], []
 
     def final(self):
-
         now = datetime.now()
         print('\n........final........\n')    
         self.log('total learning time: {}'.format(now - self.start))
