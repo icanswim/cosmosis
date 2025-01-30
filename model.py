@@ -1,6 +1,7 @@
 from math import sqrt
 
-from torch import nn, cat, squeeze, Tensor, flatten, sigmoid, max, mean, multinomial, transpose
+from torch import nn, cat, squeeze, Tensor, flatten, sigmoid 
+from torch import max, mean, multinomial, transpose, tril, ones
 from torch.nn import functional as F
 
 # torchvision models are imported by its launcher tv_models()
@@ -23,6 +24,9 @@ class CModel(nn.Module):
         vec = length of the embedding vectors (int)
         padding_idx = None/int 
         param.requires_grad = True/False
+
+    init_weights = True/False
+    
         
     datadict keywords:
       
@@ -30,7 +34,6 @@ class CModel(nn.Module):
     def __init__(self, model_param):
         super().__init__()
 
-        
         self.device = 'cuda:0'
         if 'device' in model_param:  
             self.device = model_param['device']
@@ -53,31 +56,44 @@ class CModel(nn.Module):
         self.build(**model_param)    
         if hasattr(self, 'layers'):
             self.layers = nn.ModuleList(self.layers) 
-        
-        self.weight_init()
+
+        self.init_weights()
+            
         print('CModel loaded...')
                             
     def build(self, **kwargs):
         self.layers = []
         raise NotImplementedError('subclass and implement build()...')
+
+    def init_weights(self):
+        """
+        define _init_weights for custom weight initializations
+
+        def _init_weights(self, module):
+            if isinstance(module, nn.Layer):
+                torch.nn.init.func_(module.weight, **kwargs)
+                if module.bias is not None:
+                    torch.nn.init.func_(module.bias)
+        """
         
-    def weight_init(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.constant_(m.bias, 0)
-                #nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.GroupNorm):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.InstanceNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-                   
+        if hasattr(self, '_init_weights'):
+            print('applying _init_weights...')
+            self.apply(self._init_weights)
+        else:
+            print('default weight initialization...')
+     
+    def get_num_params(self, non_embedding=True):
+        """
+        Return the number of parameters in the model.
+        For non-embedding count (default), the position embeddings get subtracted.
+        The token embeddings would too, except due to the parameter sharing these
+        params are actually used as weights in the final layer, so we include them.
+        """
+        n_params = sum(p.numel() for p in self.parameters())
+        if non_embedding:
+            n_params -= self.transformer.wpe.weight.numel()
+        return n_params  
+        
     def create_embedding_layer(self):
         """
         creates the embedding layer per the embed_param
@@ -138,12 +154,12 @@ class CModel(nn.Module):
             array: numpy or torch
         """
         X = []
-        filter_keys = [] 
+        filter_keys = [] #keys not to be included
         if self.y is not None: filter_keys.append(self.y)
-        
+
+        #if any features are to be embedded, embed them, add keys to filter
         if self.embed_param is not None:
             embedded = []
-                
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
@@ -151,26 +167,28 @@ class CModel(nn.Module):
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
-            
+        #data can be passed as a dict 
         if type(data) == dict:
             for k in data.keys(): 
                 if k not in filter_keys:
                     X.append(data[k])
             if len(X) != 0: X = cat(X, dim=-1) 
+        #or as a data object
         elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
             for k in self.data_keys:
                 if k not in filter_keys:
                     X.append(data.k)
             X = cat(X, dim=-1)
+        #or as an array
         else:
             X = data
-            
+        #cat any features with any embedded features    
         if self.embed_param is not None:
             if len(X) == 0:
                 X = embedded
             else:
                 X = cat([X, embedded], dim=-1)
-            
+        #pass the prepared features to the model 
         for l in self.layers:
             X = l(X)
             
@@ -206,7 +224,14 @@ class CModel(nn.Module):
                         
         return nn.Sequential(*conv)
 
+    def create_mask(self, size):
+        mask = tril(ones(size, size) == 1)
+        mask = mask.float()
+        mask = mask.masked_fill(mask == 0, float('-inf')) # Convert zeros to -inf
+        mask = mask.masked_fill(mask == 1, float(0.0)) # Convert ones to 0
+        return mask
     
+
 def tv_model(model_param):
     """A torchvision model launcher"""
     from torchvision import models as torchvisionmodels
@@ -261,19 +286,25 @@ class FFNet(CModel):
                                         activation=None))
         
         print('FFNet model loaded...')
-        
+
 
 class Flatten(nn.Module):
     def forward(self, x):
         return flatten(x)
 
 
+class IdentityModel(CModel):
+    def build(self, *args, **kwargs):
+        self.layers = []
+        self.layers.append(nn.Identity())
+
+
 class GPT(CModel):
     """
     Formal Algorithms for Transformers -- https://arxiv.org/pdf/2207.09238
     FlashAttention-2 -- https://arxiv.org/pdf/2307.08691
+    TODO position embeddings
     """
-
     def forward(self, data):
         X = []
         filter_keys = [] 
@@ -307,9 +338,9 @@ class GPT(CModel):
             if len(X) == 0:
                 X = embedded
            #else: X = cat([X, embedded], dim=-1)
-
+        # X is a list of embedded inputs
         for l in self.layers:
-            X = l(X[0], X[1]) # X is a list of embedded inputs
+            X = l(X[0], X[1], tgt_mask=self.create_mask(X[0].shape[0]), tgt_is_causal=True) 
 
         if self.linear_head is not None:
             X = self.linear_head(X)
@@ -317,8 +348,8 @@ class GPT(CModel):
         if self.probs:
             X = F.softmax(X, dim=-1)
 
-        if self.tokens: # TODO batchify
-            X = multinomial(X, num_samples=1)
+        if self.tokens: 
+            X = X.argmax(dim=1)
 
         if self.transpose: # (batch, block_size, classes) --> (batch, classes, block_size)
             X = transpose(X, 1, 2)
@@ -337,11 +368,5 @@ class GPT(CModel):
                                                     batch_norm=False, dropout=.1)
         else: 
             self.linear_head = None
-
-
-class IdentityModel(CModel):
-    def build(self, *args, **kwargs):
-        self.layers = []
-        self.layers.append(nn.Identity())
         
 
