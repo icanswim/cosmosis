@@ -169,7 +169,7 @@ class Metrics():
         if flag == 'test':
             self.test_loss.append(self.e_loss/self.n)
             
-    def reset_epoch(self):
+    def reset_loop(self):
         """
         called at the end of each run loop
         """
@@ -439,7 +439,7 @@ class Learn():
                     data = _data
                 else: 
                     data = data.to('cuda:0', non_blocking=True)
-            # transformer generative loop
+            # generative loop
             if len(self.metrics.predictions) > 0: 
                 data = self.metrics.predictions[-1]
                 data = as_tensor(data)
@@ -457,7 +457,7 @@ class Learn():
                     
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
-                self.metrics.e_loss += b_loss.item()/self.bs
+                self.metrics.e_loss += b_loss.item()
                 self.metrics.n += self.bs
 
                 if flag == 'train':
@@ -477,7 +477,7 @@ class Learn():
         self.metrics.metric(flag)
         self.metrics.loss(flag)
         self.metrics.report(y_pred, y, flag)
-        self.metrics.reset_epoch()
+        self.metrics.reset_loop()
                 
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
         
