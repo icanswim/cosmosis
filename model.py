@@ -1,5 +1,4 @@
 from math import sqrt
-from dataclasses import dataclass
 
 from torch import nn, cat, squeeze, Tensor, flatten, sigmoid, arange, topk
 from torch import max, mean, multinomial, transpose, tril, ones, long, no_grad
@@ -51,8 +50,7 @@ class CModel(nn.Module):
             self.layers = nn.ModuleList(self.layers) 
 
         self.init_weights()
-            
-        print('CModel loaded...')
+        print('{} model loaded...'.format(self.__class__.__name__))
                             
     def build(self, **kwargs):
         self.layers = []
@@ -222,7 +220,6 @@ class CModel(nn.Module):
         mask = mask.float()
         mask = mask.masked_fill(mask == 0, float('-inf')) # Convert zeros to -inf
         mask = mask.masked_fill(mask == 1, float(0.0)) # Convert ones to 0
-        
         return mask
     
 
@@ -299,145 +296,106 @@ class IdentityModel(CModel):
         self.layers.append(nn.Identity())
 
 
-class Attention(nn.Module):
+class Attention(CModel):
+    """
+    d_seq = dimesion sequence (time, sentence length)
+    d_vec = dimension embedding vector
+    n_head = number of attention heads
+    """
 
-    def __init__(self, config):
-        super().__init__()
-        assert config.n_embd % config.n_head == 0
+    def build(self, d_seq=0, d_vec=0, n_head=0, **model_param):
+
+        self.d_seq = d_seq
+        self.d_vec = d_vec
+        self.n_head = n_head
+        assert d_vec % n_head == 0
+        
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
-        # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
-        # regularization
-        self.attn_dropout = nn.Dropout(config.dropout)
-        self.resid_dropout = nn.Dropout(config.dropout)
-        self.n_head = config.n_head
-        self.n_embd = config.n_embd
-        self.dropout = config.dropout
-        self.flash = hasattr(nn.functional, 'scaled_dot_product_attention')
+        self.attn = nn.Linear(d_vec, 3 * d_vec, bias=False)
+        self.proj = nn.Linear(d_vec, d_vec, bias=False)
+
+        self.attn_dropout = nn.Dropout(p=.1)
+        self.proj_dropout = nn.Dropout(p=.1)
 
     def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
-
+    
+        batch, d_seq, d_vec = x.size()
+        assert d_seq == self.d_seq 
+        assert d_vec == self.d_vec
+        
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q, k, v  = self.attn(x).split(self.d_vec, dim=2)
+        k = k.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
+        q = q.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
+        v = v.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        y = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, 
-                                dropout_p=self.dropout if self.training else 0, is_causal=True)
-
-        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
-        # output projection
-        y = self.resid_dropout(self.c_proj(y))
+        # self-attend: (batch, n_head, d_seq, hs) x (batch, n_head, hs, d_seq) -> (B, nh, T, T)
+        y = F.scaled_dot_product_attention(q, k, v, 
+                attn_mask=None, dropout_p=.1 if self.training else 0, is_causal=True)
+        # re-assemble all head outputs side by side
+        y = y.transpose(1, 2).contiguous().view(batch, d_seq, d_vec) 
+        y = self.proj_dropout(self.proj(y))
         return y
 
-class MLP(nn.Module):
 
-    def __init__(self, config):
-        super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
+class Block(CModel):
 
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
-
-class Block(nn.Module):
-
-    def __init__(self, config):
-        super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-        self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+    def build(self, d_vec=0, **model_param):
+        self.ln_1 = nn.LayerNorm(d_vec, bias=False)
+        self.attn = Attention(**model_param)
+        self.ln_2 = nn.LayerNorm(d_vec, bias=False)
+        self.ffnet = FFNet(model_name='funnel', in_channels=d_vec, hidden=2*d_vec, 
+                                                   out_channels=d_vec, **model_param)
 
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+        x = x + self.ffnet(self.ln_2(x))
         return x
 
-@dataclass
-class GPTConfig:
-    block_size: int = 10
-    vocab_size: int = 50304 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
-    n_layer: int = 2
-    n_head: int = 4
-    n_embd: int = 16
-    dropout: float = 0.0
-    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
-class GPT(nn.Module):
+class GPT(CModel):
     """https://github.com/karpathy/nanoGPT"""
 
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
-            drop = nn.Dropout(config.dropout),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
-        ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        # https://paperswithcode.com/method/weight-tying
-        self.transformer.wte.weight = self.lm_head.weight 
-        # init all weights
-        self.apply(self._init_weights)
-
+    def build(self, n_layer=0, d_vec=0, d_vocab=0, **model_param):
+    
+        self.dropout = nn.Dropout(p=.1)
+        self.layers = [Block(**model_param) for _ in range(n_layer)]
+        self.layer_norm = nn.LayerNorm(d_vec, bias=False)
+        self.lm_head = nn.Linear(d_vec, d_vocab, bias=False)
+        # weight tying
+        self.embedding_layer['tokens'].weight = self.lm_head.weight 
+  
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=.02)
 
-    def forward(self, idx, targets=None):
-        device = idx.device
-        b, t = idx.size()
-        assert t <= self.config.block_size, \
-            f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = arange(0, t, dtype=long, device=device) # shape (t)
-
-        # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
-        for block in self.transformer.h:
+    def forward(self, data):
+        
+        e_dict = self.embed_features(data)
+        x = self.dropout(e_dict['tokens'] + e_dict['position'])
+        for block in self.layers:
             x = block(x)
-        x = self.transformer.ln_f(x)
+        x = self.layer_norm(x)
+        logits = self.lm_head(x)
+        if logits.ndim == 3:
+            logits = transpose(logits, 1, 2)
+        
+        return logits
 
-        if targets is not None:
-            # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-        else:
-            # inference-time mini-optimization: only forward the lm_head on the very last position
-            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
-            loss = None
-
-        return logits, loss
-
-    def crop_block_size(self, block_size):
+    def crop_d_seq(self, d_seq):
         # model surgery to decrease the block size if necessary
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
         # but want to use a smaller block size for some smaller, simpler model
-        assert block_size <= self.config.block_size
-        self.config.block_size = block_size
-        self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:block_size])
+        assert d_seq <= self.config.d_seq
+        self.config.d_seq = d_seq
+        self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:d_seq])
         for block in self.transformer.h:
             if hasattr(block.attn, 'bias'):
-                block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
+                block.attn.bias = block.attn.bias[:,:,:d_seq,:d_seq]
 
     @no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
@@ -447,8 +405,8 @@ class GPT(nn.Module):
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
         for _ in range(max_new_tokens):
-            # if the sequence context is growing too long we must crop it at block_size
-            idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+            # if the sequence context is growing too long we must crop it at d_seq
+            idx_cond = idx if idx.size(1) <= self.config.d_seq else idx[:, -self.config.d_seq:]
             # forward the model to get the logits for the index in the sequence
             logits, _ = self(idx_cond)
             # pluck the logits at the final step and scale by desired temperature
