@@ -117,6 +117,11 @@ class CModel(nn.Module):
     def embed_features(self, data):
         """
         passes the tokens to the embedding layer
+
+        categorical features or tokens can be passed to the embedding layer in any of 3 ways:
+            data['feature'] = torch.int64 
+            data.feature = torch.int64
+            torch.int64
         
         embed_param = {'feature':(voc,vec,padding_idx,trainable),
                        'feature_3':(4,16,0,True),
@@ -139,10 +144,13 @@ class CModel(nn.Module):
         return embedded
 
     def forward(self, data):
-        """data type can be a 
-            dict: {'key': array}, 
-            object: data.key, 
-            array: numpy or torch
+        """
+        data can have the form:
+            data['feature'] = array
+            data.feature = array
+            array
+
+        array can be type numpy or torch
         """
         X = []
         filter_keys = [] #keys not to be included
@@ -356,7 +364,9 @@ class Block(CModel):
 class GPT(CModel):
     """https://github.com/karpathy/nanoGPT"""
 
-    def build(self, n_layer=0, d_vec=0, d_vocab=0, **model_param):
+    def build(self, n_layer=0, d_vec=0, d_vocab=0, d_seq=0, **model_param):
+
+        self.d_seq = d_seq
     
         self.dropout = nn.Dropout(p=.1)
         self.layers = [Block(**model_param) for _ in range(n_layer)]
@@ -375,8 +385,8 @@ class GPT(CModel):
 
     def forward(self, data):
         
-        e_dict = self.embed_features(data)
-        x = self.dropout(e_dict['tokens'] + e_dict['position'])
+        embedded_dict = self.embed_features(data)
+        x = self.dropout(embedded_dict['tokens'] + embedded_dict['position'])
         for block in self.layers:
             x = block(x)
         x = self.layer_norm(x)

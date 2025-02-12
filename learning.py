@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, cat, as_tensor
+from torch import no_grad, save, load, from_numpy, cat, as_tensor, compile, permute, arange, int64
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -52,7 +52,10 @@ class Metrics():
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
         self.log('\nNew Experiment: {}'.format(self.start))
     
-    def infer(self):              
+    def infer(self):
+        """
+        process the predictions and save
+        """
         now = datetime.now()
         print('\n.....................\n')
         self.log('total learning time: {} \n'.format(now - self.start))
@@ -82,7 +85,7 @@ class Metrics():
         
     def metric(self, flag):
         """
-        called at the end of each run loop
+        called at the end of each run() loop
         TODO multiple metric
         flags = train, val, test, infer
         """
@@ -117,7 +120,7 @@ class Metrics():
         
     def report(self, _y_pred, _y, flag):
         """
-        called at the end of each run loop
+        called at the end of each run() loop
         """
             
         if self.epoch == 0: return
@@ -137,7 +140,7 @@ class Metrics():
             print('len(self.predictions): ', len(self.predictions))
             return
 
-        #get the last instance from the batch
+        #get the last batch
         y_pred = _y_pred[-1]
         y = _y[-1]
         
@@ -160,7 +163,7 @@ class Metrics():
     
     def loss(self, flag):
         """
-        called at the end of each run loop
+        called at the end of each run() loop
         """
         if flag == 'train':
             self.train_loss.append(self.e_loss/self.n)
@@ -171,7 +174,7 @@ class Metrics():
             
     def reset_loop(self):
         """
-        called at the end of each run loop
+        called at the end of each run() loop
         """
         self.n, self.e_loss, self.y, self.y_pred = 0, 0, [], []
 
@@ -302,7 +305,7 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=None, save_model=False,
-                 batch_size=10, epochs=1,
+                 batch_size=10, epochs=1, compile_model=False, 
                  gpu=True, weights_only=False, target='y'):
 
         self.weights_only = weights_only
@@ -343,19 +346,23 @@ class Learn():
             print('loading embedding weights...')
                     
         if adapt is not None: model.adapt(*adapt)
-        
+
         if self.gpu == True:
             try:
-                self.model = model.to('cuda:0')
+                model.to('cuda:0')
                 print('running model on gpu...')
             except:
                 print('gpu not available.  running model on cpu...')
-                self.model = model
                 self.gpu = False
         else:
             print('running model on cpu...')
-            self.model = model
+
+        if compile_model:
+            model = compile(model)
+            print('compiling model...')
             
+        self.model = model
+
         self.metrics.log(self.model.children)
         
         if Criterion is not None:
@@ -393,7 +400,10 @@ class Learn():
                 model_name = save_model
             else:
                 model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
-            if adapt: 
+
+            if compile: 
+                save(model.state_dict(), './models/{}.pth'.format(model_name))
+            elif adapt: 
                 save(self.model, './models/{}.pth'.format(model_name))
             else: 
                 save(self.model.state_dict(), './models/{}.pth'.format(model_name))
@@ -402,6 +412,8 @@ class Learn():
                 for i, embedding in enumerate(self.model.embeddings):
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, i), weight)
+
+            print('model: {} saved...'.format(model_name))
         
     def run(self, flag):
 
@@ -424,7 +436,25 @@ class Learn():
             self.model.training = False
             dataset = self.test_ds
             drop_last = False
-        
+
+            # generative loop epochs times
+            if len(self.metrics.predictions) > 0:
+                d_seq = 10
+                y_pred = self.metrics.predictions[-1].squeeze()
+                y_pred = F.softmax(y_pred, dim=-1)
+                tokens = y_pred.argmax(dim=0)
+                last = tokens[-1].unsqueeze(dim=0)
+                tokens = cat((last, tokens[1:]))
+                
+                data = {'tokens': tokens,
+                        'position': arange(0, d_seq, dtype=int64).to('cuda:0')}
+                
+                y_pred = self.model(data)
+                y_pred = y_pred[-d_seq::]
+                y_pred = permute(y_pred, (1, 0))
+                self.metrics.predictions.append(y_pred)
+                return
+            
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
                                      num_workers=0, pin_memory=True, 
@@ -439,11 +469,6 @@ class Learn():
                     data = _data
                 else: 
                     data = data.to('cuda:0', non_blocking=True)
-            # generative loop
-            if len(self.metrics.predictions) > 0: 
-                data = self.metrics.predictions[-1]
-                data = as_tensor(data)
-                data = data.to('cuda:0')
 
             y_pred = self.model(data)
                     
@@ -464,10 +489,7 @@ class Learn():
                     b_loss.backward()
                     self.opt.step()
             else:
-                y_pred = F.softmax(y_pred.squeeze(), dim=-1)
-                y_pred = y_pred.argmax(dim=0)
-                y_pred = y_pred.detach().cpu().numpy().tolist()
-                self.metrics.predictions.append(y_pred)
+                self.metrics.predictions.append(y_pred.squeeze().clone().detach())
                 y = None
 
         if flag == 'val': 
