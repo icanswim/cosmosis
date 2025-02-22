@@ -153,10 +153,10 @@ class CModel(nn.Module):
         array can be type numpy or torch
         """
         X = []
-        filter_keys = [] #keys not to be included
+        filter_keys = [] # keys not to be included
         if self.y is not None: filter_keys.append(self.y)
 
-        #if any features are to be embedded, embed them, add keys to filter
+        # if any features are to be embedded, embed them, add keys to filter
         if self.embed_param is not None:
             embedded = []
             embedded_dict = self.embed_features(data)
@@ -166,28 +166,28 @@ class CModel(nn.Module):
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
-        #data can be passed as a dict 
+        # data can be passed as a dict 
         if type(data) == dict:
             for k in data.keys(): 
                 if k not in filter_keys:
                     X.append(data[k])
             if len(X) != 0: X = cat(X, dim=-1) 
-        #or as a data object
+        # or as a data object
         elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
             for k in self.data_keys:
                 if k not in filter_keys:
                     X.append(data.k)
             X = cat(X, dim=-1)
-        #or as an array
+        # or as an array
         else:
             X = data
-        #cat any features with any embedded features    
+        # cat any features with any embedded features    
         if self.embed_param is not None:
             if len(X) == 0:
                 X = embedded
             else:
                 X = cat([X, embedded], dim=-1)
-        #pass the prepared features to the model 
+        # pass the prepared features to the model 
         for l in self.layers:
             X = l(X)
             
@@ -226,8 +226,8 @@ class CModel(nn.Module):
     def create_mask(self, size):
         mask = tril(ones(size, size) == 1)
         mask = mask.float()
-        mask = mask.masked_fill(mask == 0, float('-inf')) # Convert zeros to -inf
-        mask = mask.masked_fill(mask == 1, float(0.0)) # Convert ones to 0
+        mask = mask.masked_fill(mask == 0, float('-inf')) # convert zeros to -inf
+        mask = mask.masked_fill(mask == 1, float(0.0)) # convert ones to 0
         return mask
     
 
@@ -306,14 +306,12 @@ class IdentityModel(CModel):
 
 class Attention(CModel):
     """
-    d_seq = dimesion sequence (time, sentence length)
     d_vec = dimension embedding vector
     n_head = number of attention heads
     """
 
-    def build(self, d_seq=0, d_vec=0, n_head=0, **model_param):
+    def build(self, d_vec=0, n_head=0, **model_param):
 
-        self.d_seq = d_seq
         self.d_vec = d_vec
         self.n_head = n_head
         assert d_vec % n_head == 0
@@ -326,23 +324,20 @@ class Attention(CModel):
         self.proj_dropout = nn.Dropout(p=.1)
 
     def forward(self, x):
-    
-        batch, d_seq, d_vec = x.size()
-        assert d_seq == self.d_seq 
+        batch, d_seq, d_vec = x.size() # d_seq = dimesion sequence (time, sentence length)
         assert d_vec == self.d_vec
-        
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v  = self.attn(x).split(self.d_vec, dim=2)
         k = k.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
         q = q.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
         v = v.view(batch, d_seq, self.n_head, d_vec // self.n_head).transpose(1, 2) # (batch, n_head, d_seq, hs)
-
         # self-attend: (batch, n_head, d_seq, hs) x (batch, n_head, hs, d_seq) -> (B, nh, T, T)
         y = F.scaled_dot_product_attention(q, k, v, 
                 attn_mask=None, dropout_p=.1 if self.training else 0, is_causal=True)
         # re-assemble all head outputs side by side
         y = y.transpose(1, 2).contiguous().view(batch, d_seq, d_vec) 
         y = self.proj_dropout(self.proj(y))
+        
         return y
 
 
@@ -354,7 +349,6 @@ class Block(CModel):
         self.ln_2 = nn.LayerNorm(d_vec, bias=False)
         self.ffnet = FFNet(model_name='funnel', in_channels=d_vec, hidden=2*d_vec, 
                                                    out_channels=d_vec, **model_param)
-
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
         x = x + self.ffnet(self.ln_2(x))
@@ -364,10 +358,9 @@ class Block(CModel):
 class GPT(CModel):
     """https://github.com/karpathy/nanoGPT"""
 
-    def build(self, n_layer=0, d_vec=0, d_vocab=0, d_seq=0, **model_param):
-
+    def build(self, n_layer=0, d_vec=0, d_vocab=0, d_seq=0, temperature=1, **model_param):
         self.d_seq = d_seq
-    
+        self.temperature = temperature
         self.dropout = nn.Dropout(p=.1)
         self.layers = [Block(**model_param) for _ in range(n_layer)]
         self.layer_norm = nn.LayerNorm(d_vec, bias=False)
@@ -384,54 +377,31 @@ class GPT(CModel):
             nn.init.normal_(module.weight, mean=0.0, std=.02)
 
     def forward(self, data):
-        
         embedded_dict = self.embed_features(data)
         x = self.dropout(embedded_dict['tokens'] + embedded_dict['position'])
         for block in self.layers:
             x = block(x)
         x = self.layer_norm(x)
         logits = self.lm_head(x)
-        if logits.ndim == 3:
-            logits = transpose(logits, 1, 2)
         
         return logits
 
-    def crop_d_seq(self, d_seq):
-        # model surgery to decrease the block size if necessary
-        # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
-        # but want to use a smaller block size for some smaller, simpler model
-        assert d_seq <= self.config.d_seq
-        self.config.d_seq = d_seq
-        self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:d_seq])
-        for block in self.transformer.h:
-            if hasattr(block.attn, 'bias'):
-                block.attn.bias = block.attn.bias[:,:,:d_seq,:d_seq]
-
-    @no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(self, logits):
         """
-        Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
-        the sequence max_new_tokens times, feeding the predictions back into the model each time.
-        Most likely you'll want to make sure to be in model.eval() mode of operation for this.
+        (n_batch, d_seq, d_vocab)
         """
-        for _ in range(max_new_tokens):
-            # if the sequence context is growing too long we must crop it at d_seq
-            idx_cond = idx if idx.size(1) <= self.config.d_seq else idx[:, -self.config.d_seq:]
-            # forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx_cond)
-            # pluck the logits at the final step and scale by desired temperature
-            logits = logits[:, -1, :] / temperature
-            # optionally crop the logits to only the top k options
-            if top_k is not None:
-                v, _ = topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float('Inf')
-            # apply softmax to convert logits to (normalized) probabilities
-            probs = F.softmax(logits, dim=-1)
-            # sample from the distribution
-            idx_next = multinomial(probs, num_samples=1)
-            # append sampled index to the running sequence and continue
-            idx = cat((idx, idx_next), dim=1)
+        logits = logits[:,-1:,:]
+        for _ in range(self.d_seq):
+            last = logits[:,-1:,:]
+            probs = F.softmax(last, dim=-1)
+            tokens = probs.argmax(dim=-1)
+            data = {'tokens': tokens,
+                    'position': arange(0, tokens.shape[1], dtype=long).to('cuda:0')}
+            next = self(data)
+            next = next / self.temperature
+            logits = cat((logits, next), dim=1)
+            print('logits.shape: ', logits.shape)
 
-        return idx
+        return logits[:,1:,:]
 
 

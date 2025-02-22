@@ -62,9 +62,9 @@ class Metrics():
         print('total learning time: {}'.format(now - self.start))
         
         if self.metric_name == 'transformer':
-            predictions = cat(self.predictions, dim=-1).squeeze()
+            predictions = cat(self.predictions, dim=1).squeeze()
             predictions = F.softmax(predictions, dim=-1)
-            predictions = predictions.argmax(dim=0)
+            predictions = predictions.argmax(dim=-1)
             predictions = predictions.detach().cpu().numpy().tolist()
             predictions = self.decoder(predictions)
             predictions = np.asarray(predictions).reshape((1,-1))
@@ -140,7 +140,7 @@ class Metrics():
             print('len(self.predictions): ', len(self.predictions))
             return
 
-        #get the last batch
+        # get the last instance
         y_pred = _y_pred[-1]
         y = _y[-1]
         
@@ -364,7 +364,7 @@ class Learn():
         self.model = model
 
         self.metrics.log(self.model.children)
-        
+        # primary loop 
         if Criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
@@ -389,9 +389,9 @@ class Learn():
                 
             self.metrics.final()
             
-        else: #no Criterion implies inference mode
+        else: # no Criterion implies inference mode
             with no_grad():
-                for e in range(epochs):
+                for e in range(epochs): # epochs = 2 for generative loop
                     self.run('infer')
                 self.metrics.infer()
                     
@@ -416,7 +416,7 @@ class Learn():
             print('model: {} saved...'.format(model_name))
         
     def run(self, flag):
-
+        # secondary loop
         if flag == 'train': 
             self.model.training = True
             dataset = self.train_ds
@@ -437,29 +437,19 @@ class Learn():
             dataset = self.test_ds
             drop_last = False
 
-            # generative loop epochs times
-            if len(self.metrics.predictions) > 0:
-                d_seq = 10
-                y_pred = self.metrics.predictions[-1].squeeze()
-                y_pred = F.softmax(y_pred, dim=-1)
-                tokens = y_pred.argmax(dim=0)
-                last = tokens[-1].unsqueeze(dim=0)
-                tokens = cat((last, tokens[1:]))
-                
-                data = {'tokens': tokens,
-                        'position': arange(0, d_seq, dtype=int64).to('cuda:0')}
-                
-                y_pred = self.model(data)
-                y_pred = y_pred[-d_seq::]
-                y_pred = permute(y_pred, (1, 0))
-                self.metrics.predictions.append(y_pred)
-                return
+            # generative loop
+            if len(self.metrics.predictions) > 0: # first pass gets the prompt from the dataloader
+                if hasattr(self.model, 'generate'):
+                    prompt_logits = self.metrics.predictions[-1]
+                    prediction_logits = self.model.generate(prompt_logits)
+                    self.metrics.predictions.append(prediction_logits)
+                    return
             
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
                                      num_workers=0, pin_memory=True, 
                                      drop_last=drop_last)
-       
+        # tertiary loop
         for data in dataloader:
             if self.gpu: # overwrite the datadic with a new copy on the gpu
                 if type(data) == dict: 
@@ -470,8 +460,7 @@ class Learn():
                 else: 
                     data = data.to('cuda:0', non_blocking=True)
 
-            y_pred = self.model(data)
-                    
+            y_pred = self.model(data)   
             if self.metrics.metric_func is not None: self.metrics.y_pred.append(y_pred)
             
             if flag != 'infer':
@@ -489,7 +478,7 @@ class Learn():
                     b_loss.backward()
                     self.opt.step()
             else:
-                self.metrics.predictions.append(y_pred.squeeze().clone().detach())
+                self.metrics.predictions.append(y_pred)
                 y = None
 
         if flag == 'val': 
