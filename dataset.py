@@ -132,9 +132,6 @@ class CDataset(Dataset, ABC):
         else: return np.concatenate(output, axis=-1)
 
 
-    
-
-
 class ExampleDataset(CDataset):
     #zero is the lookup for the padding index
     embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},

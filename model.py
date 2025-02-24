@@ -400,8 +400,7 @@ class GPT(CModel):
             next = self(data)
             next = next / self.temperature
             logits = cat((logits, next), dim=1)
-            print('logits.shape: ', logits.shape)
 
-        return logits[:,1:,:]
+        return logits
 
 

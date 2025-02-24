@@ -62,19 +62,22 @@ class Metrics():
         print('total learning time: {}'.format(now - self.start))
         
         if self.metric_name == 'transformer':
-            predictions = cat(self.predictions, dim=1).squeeze()
-            predictions = F.softmax(predictions, dim=-1)
-            predictions = predictions.argmax(dim=-1)
-            predictions = predictions.detach().cpu().numpy().tolist()
-            predictions = self.decoder(predictions)
-            predictions = np.asarray(predictions).reshape((1,-1))
-            print('predictions: ', predictions)
+            for i, p in enumerate(self.predictions):
+                p = F.softmax(p.squeeze(), dim=-1)
+                p = p.argmax(dim=-1)
+                p = p.detach().cpu().numpy().tolist()
+                p = self.decoder(p)
+                p = np.asarray(p).reshape((1,-1))
+                print('prediction {}: {}'.format(i+1, p))
+                pd.DataFrame(p).to_csv('./logs/{}.{}_inference.csv'.format(
+                                                        self.start, i+1), index=True)
         else:
             predictions = self.predictions.detach().cpu().numpy()
+            print('predictions[-1]: ', predictions[-1])
             print('predictions.shape: ', predictions.shape)
-        
-        pd.DataFrame(predictions).to_csv(
+            pd.DataFrame(predictions).to_csv(
                         './logs/{}_inference.csv'.format(self.start), index=True)
+        
         
         print('inference {} complete and saved to csv...'.format(self.start))
         
