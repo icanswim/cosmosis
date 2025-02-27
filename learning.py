@@ -50,6 +50,7 @@ class Metrics():
                 raise Exception('hey just what you see pal...')
                 
         logging.basicConfig(filename='./logs/cosmosis.log', level=20)
+        self.log('\n.....................\n')
         self.log('\nNew Experiment: {}'.format(self.start))
     
     def infer(self):
@@ -58,28 +59,28 @@ class Metrics():
         """
         now = datetime.now()
         print('\n.....................\n')
-        self.log('total learning time: {} \n'.format(now - self.start))
+        self.log('\n.....................\n')
+        self.log('\ninference job: {} \n'.format(self.start))
+        self.log('\ntotal learning time: {} \n'.format(now - self.start))
         print('total learning time: {}'.format(now - self.start))
         
         if self.metric_name == 'transformer':
-            for i, p in enumerate(self.predictions):
-                p = F.softmax(p.squeeze(), dim=-1)
-                p = p.argmax(dim=-1)
-                p = p.detach().cpu().numpy().tolist()
-                p = self.decoder(p)
-                p = np.asarray(p).reshape((1,-1))
-                print('prediction {}: {}'.format(i+1, p))
-                pd.DataFrame(p).to_csv('./logs/{}.{}_inference.csv'.format(
-                                                        self.start, i+1), index=True)
+            predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
+            predictions = predictions.argmax(dim=-1)
+            predictions = predictions.detach().cpu().numpy().tolist()
+            predictions = self.decoder(predictions)
+            predictions = np.asarray(predictions).reshape((1,-1))
+            print('prediction: ,', predictions)
         else:
             predictions = self.predictions.detach().cpu().numpy()
             print('predictions[-1]: ', predictions[-1])
             print('predictions.shape: ', predictions.shape)
-            pd.DataFrame(predictions).to_csv(
-                        './logs/{}_inference.csv'.format(self.start), index=True)
-        
-        
-        print('inference {} complete and saved to csv...'.format(self.start))
+            
+        pd.DataFrame(predictions).to_csv(
+                    './logs/{}_inference.csv'.format(now), index=True)
+        print('inference instance {} complete and saved to csv...'.format(now))
+        self.log('\ninference instance {} saved to csv...'.format(now))
+        self.predictions = []
         
     def softmax_overflow(x):
         x_max = x.max(axis=1, keepdims=True)
@@ -179,12 +180,14 @@ class Metrics():
         """
         called at the end of each run() loop
         """
-        self.n, self.e_loss, self.y, self.y_pred = 0, 0, [], []
+        self.n, self.e_loss = 0, 0
+        self.y, self.y_pred = [], []
 
     def final(self):
         now = datetime.now()
-        print('\n........final........\n')    
-        self.log('total learning time: {}'.format(now - self.start))
+        print('\n........final........\n')
+        self.log('\n........final........\n')
+        self.log('\ntotal learning time: {}'.format(now - self.start))
         print('total learning time: {}'.format(now - self.start))
         
         if len(self.test_loss) != 0:
@@ -192,7 +195,7 @@ class Metrics():
             print('test loss: {}'.format(self.test_loss[-1]))
             
         if len(self.metric_train_log) != 0:
-            self.log('{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
+            self.log('\n{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
             print('{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
             logs = zip(self.train_loss, self.val_loss, self.lr_log, self.metric_val_log)
             cols = ['train_loss','validation_loss','learning_rate',self.metric_name]
@@ -323,11 +326,11 @@ class Learn():
         if hasattr(self.train_ds, 'encoding'):
             self.metrics.decoder = self.train_ds.encoding.decode
         
-        self.metrics.log('model: {}\n{}'.format(Model, model_param))
-        self.metrics.log('dataset: {}\n{}'.format(Datasets, ds_param))
-        self.metrics.log('sampler: {}\n{}'.format(Sampler, sample_param))
-        self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
-                                                    epochs, batch_size, save_model, load_model))
+        self.metrics.log('\nmodel: {}\n{}'.format(Model, model_param))
+        self.metrics.log('\ndataset: {}\n{}'.format(Datasets, ds_param))
+        self.metrics.log('\nsampler: {}\n{}'.format(Sampler, sample_param))
+        self.metrics.log('\nepochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+                                                        epochs, batch_size, save_model, load_model))
 
         if not gpu: model_param['device'] = 'cpu'
         
@@ -366,16 +369,16 @@ class Learn():
             
         self.model = model
 
-        self.metrics.log(self.model.children)
+        self.metrics.log('\n{}'.format(self.model.children))
         # primary loop 
         if Criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
-            self.metrics.log('criterion: {}\n{}'.format(self.criterion, crit_param))
+            self.metrics.log('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
             self.opt = Optimizer(self.model.parameters(), **opt_param)
-            self.metrics.log('optimizer: {}\n{}'.format(self.opt, opt_param))
+            self.metrics.log('\noptimizer: {}\n{}'.format(self.opt, opt_param))
             self.scheduler = Scheduler(self.opt, **sched_param)
-            self.metrics.log('scheduler: {}\n{}'.format(self.scheduler, sched_param))
+            self.metrics.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
             
             for e in range(epochs):
                 self.metrics.epoch = e
@@ -394,9 +397,9 @@ class Learn():
             
         else: # no Criterion implies inference mode
             with no_grad():
-                for e in range(epochs): # epochs = 2 for generative loop
+                for e in range(epochs): 
                     self.run('infer')
-                self.metrics.infer()
+                    self.metrics.infer()
                     
         if save_model:
             if type(save_model) == str:
@@ -439,14 +442,7 @@ class Learn():
             self.model.training = False
             dataset = self.test_ds
             drop_last = False
-
-            # generative loop
-            if len(self.metrics.predictions) > 0: # first pass gets the prompt from the dataloader
-                if hasattr(self.model, 'generate'):
-                    prompt_logits = self.metrics.predictions[-1]
-                    prediction_logits = self.model.generate(prompt_logits)
-                    self.metrics.predictions.append(prediction_logits)
-                    return
+            self.model.generate = True
             
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 

@@ -366,7 +366,8 @@ class GPT(CModel):
         self.layer_norm = nn.LayerNorm(d_vec, bias=False)
         self.lm_head = nn.Linear(d_vec, d_vocab, bias=False)
         # weight tying
-        self.embedding_layer['tokens'].weight = self.lm_head.weight 
+        self.embedding_layer['tokens'].weight = self.lm_head.weight
+        self.generate = False
   
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -377,27 +378,33 @@ class GPT(CModel):
             nn.init.normal_(module.weight, mean=0.0, std=.02)
 
     def forward(self, data):
+        if self.generate is True:
+            return self._generate(data)
+        else: 
+            return self._forward(data)
+        
+    def _forward(self, data):
         embedded_dict = self.embed_features(data)
         x = self.dropout(embedded_dict['tokens'] + embedded_dict['position'])
         for block in self.layers:
             x = block(x)
         x = self.layer_norm(x)
         logits = self.lm_head(x)
-        
+
         return logits
 
-    def generate(self, logits):
+    def _generate(self, data):
         """
         (n_batch, d_seq, d_vocab)
         """
-        logits = logits[:,-1:,:]
-        for _ in range(self.d_seq):
+        logits = self._forward(data)
+        for i in range(self.d_seq):
             last = logits[:,-1:,:]
             probs = F.softmax(last, dim=-1)
             tokens = probs.argmax(dim=-1)
             data = {'tokens': tokens,
                     'position': arange(0, tokens.shape[1], dtype=long).to('cuda:0')}
-            next = self(data)
+            next = self._forward(data)
             next = next / self.temperature
             logits = cat((logits, next), dim=1)
 
