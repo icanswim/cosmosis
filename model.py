@@ -381,8 +381,12 @@ class GPT(CModel):
         if self.generate is True:
             return self._generate(data)
         else: 
-            return transpose(self._forward(data), 1, 2)
-        
+            logits = self._forward(data)
+            if logits.dim() == 3:
+                return transpose(logits, 1, 2)
+            else:
+                return logits
+            
     def _forward(self, data):
         embedded_dict = self.embed_features(data)
         x = self.dropout(embedded_dict['tokens'] + embedded_dict['position'])
@@ -411,6 +415,6 @@ class GPT(CModel):
             next = next / self.temperature
             logits = cat((logits, next), dim=1)
         
-        return logits[:,:self.d_gen,:]
+        return logits
 
 
