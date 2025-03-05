@@ -70,7 +70,7 @@ class Metrics():
             predictions = predictions.detach().cpu().numpy().tolist()
             predictions = self.decoder(predictions)
             predictions = np.asarray(predictions).reshape((1,-1))
-            print('prediction: ,', predictions)
+            print('predictions: ', predictions)
         else:
             predictions = self.predictions.detach().cpu().numpy()
             print('predictions[-1]: ', predictions[-1])
@@ -420,9 +420,9 @@ class Learn():
                     np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, i), weight)
 
             print('model: {} saved...'.format(model_name))
+    
+    def run(self, flag): # secondary loop
         
-    def run(self, flag):
-        # secondary loop
         if flag == 'train': 
             self.model.training = True
             dataset = self.train_ds
