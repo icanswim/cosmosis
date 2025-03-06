@@ -51,6 +51,7 @@ class CModel(nn.Module):
 
         self.init_weights()
         print('{} model loaded...'.format(self.__class__.__name__))
+        self.get_num_params()
                             
     def build(self, **kwargs):
         self.layers = []
@@ -73,17 +74,9 @@ class CModel(nn.Module):
         else:
             print('default weight initialization...')
      
-    def get_num_params(self, non_embedding=True):
-        """
-        Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
-        """
+    def get_num_params(self):
         n_params = sum(p.numel() for p in self.parameters())
-        if non_embedding:
-            n_params -= self.transformer.wpe.weight.numel()
-        return n_params  
+        print('number of model parameters: ', n_params) 
         
     def create_embedding_layer(self):
         """
@@ -403,6 +396,8 @@ class GPT(CModel):
                   'positions': torch.array}
                   
         logits = (n_batch, d_gen, d_vocab)
+
+        self.d_gen >= len(prompt)
         """
         logits = self._forward(prompt)
         while logits.shape[1] < self.d_gen:
