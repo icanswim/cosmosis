@@ -310,7 +310,7 @@ class Learn():
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
-                 adapt=None, load_model=None, load_embed=None, save_model=False,
+                 adapt=None, load_model=None, load_embed=True, save_model=False,
                  batch_size=10, epochs=1, compile_model=False, 
                  gpu=True, weights_only=False, target='y'):
 
@@ -345,12 +345,15 @@ class Learn():
         else:
             model = Model(model_param)
         
-        if load_embed is not None:
-            for i, embedding in enumerate(model.embeddings):
-                weight = np.load('./models/{}_{}_embedding_weight.npy'.format(load_embed, i))
-                embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][i][4])
-            print('loading embedding weights...')
-                    
+        if load_embed is True:
+            try:
+                for feature, embedding in model.embedding_layer.items():
+                    weight = np.load('./models/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
+                    embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
+                print('loading embedding weights...')
+            except:
+                print('embedding weights failed to load.  reinitializing...')
+                
         if adapt is not None: model.adapt(*adapt)
 
         if self.gpu == True:
@@ -414,10 +417,10 @@ class Learn():
             else: 
                 save(self.model.state_dict(), './models/{}.pth'.format(model_name))
                      
-            if hasattr(self.model, 'embeddings'):
-                for i, embedding in enumerate(self.model.embeddings):
+            if hasattr(self.model, 'embedding_layer'):
+                for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
-                    np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, i), weight)
+                    np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
 
             print('model: {} saved...'.format(model_name))
     
