@@ -351,9 +351,10 @@ class Block(CModel):
 class GPT(CModel):
     """https://github.com/karpathy/nanoGPT"""
 
-    def build(self, n_layer=0, d_vec=0, d_vocab=0, d_gen=0, temperature=1, **model_param):
+    def build(self, n_layer=0, d_vec=0, d_vocab=0, d_gen=0, 
+                          temperature=1, top_k=None, **model_param):
         self.d_gen = d_gen # token length generated
-        self.temperature = temperature
+        self.temperature, self.top_k = temperature, top_k
         self.dropout = nn.Dropout(p=.1)
         self.layers = [Block(**model_param) for _ in range(n_layer)]
         self.layer_norm = nn.LayerNorm(d_vec, bias=False)
@@ -393,16 +394,18 @@ class GPT(CModel):
     def _generate(self, prompt):
         """
         prompt = {'tokens': torch.array,
-                  'positions': torch.array}
-                  
+                  'positions': torch.array}     
         logits = (n_batch, d_gen, d_vocab)
-
         self.d_gen >= len(prompt)
         """
         logits = self._forward(prompt)
         while logits.shape[1] < self.d_gen:
+            if self.top_k is not None:
+                v, _ = topk(logits.squeeze(), min(self.top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
             probs = F.softmax(logits, dim=-1)
-            tokens = probs.argmax(dim=-1)
+            tokens = multinomial(probs.squeeze(), num_samples=1)
+            tokens = transpose(tokens, 0, 1)
             data = {'tokens': tokens,
                     'position': arange(0, tokens.shape[-1], dtype=long).to('cuda:0')}
             next = self._forward(data)

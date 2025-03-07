@@ -126,8 +126,6 @@ class Metrics():
         """
         called at the end of each run() loop
         """
-            
-        if self.epoch == 0: return
         if flag == 'train': return
             
         now = datetime.now()
