@@ -155,7 +155,7 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=0)
+                    embed = flatten(embed, start_dim=1)
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
@@ -179,7 +179,7 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                X = cat([X, embedded], dim=-1)
+                X = cat([X.squeeze(), embedded], dim=-1)
         # pass the prepared features to the model 
         for l in self.layers:
             X = l(X)
@@ -249,28 +249,29 @@ class SModel(CModel):
 class FFNet(CModel):
     model_config = {}
     model_config['simple'] = {'shape': [('in_channels',1),(1,1),(1,1),(1,'out_channels')], 
-                              'dropout': [.1, .2, .3],
-                              'activation': nn.GELU}
+                              'dropout': [.1, .2, .3]}
+
     model_config['funnel'] = {'shape': [('in_channels',1),(1,1),(1,1),
                                         (1,1/2),(1/2,1/2),(1/2,'out_channels')], 
-                              'dropout': [.1, .2, .3, .1, .2],
-                              'activation': nn.GELU}
+                              'dropout': [.1, .2, .3, .1, .2]}
 
-    def build(self, model_name='funnel', in_channels=0, hidden=0, out_channels=0, **kwargs):
+    def build(self, model_name='funnel', act='relu', 
+                  in_channels=0, hidden=0, out_channels=0, **kwargs):
         
+        activation = {'gelu': nn.GELU, 'relu': nn.ReLU}
         config = FFNet.model_config[model_name]
         self.layers = []
         
         self.layers.append(self.ff_unit(in_channels, int(config['shape'][0][1]*hidden),
                                         dropout=config['dropout'][0],
                                         norm=True,
-                                        activation=config['activation']))
+                                        activation=activation[act]))
         
         for i, s in enumerate(config['shape'][1:-1]):
             self.layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
                                             dropout=config['dropout'][i+1],
                                             norm=True,
-                                            activation=config['activation']))
+                                            activation=activation[act]))
             
         self.layers.append(self.ff_unit(int(config['shape'][-1][0]*hidden), out_channels,
                                         dropout=None,
@@ -410,9 +411,9 @@ class GPT(CModel):
                     'position': arange(0, tokens.shape[-1], dtype=long).to('cuda:0')}
             next = self._forward(data)
             next = next[:,-1:,:]
-            next = next / self.temperature
+            next = next * self.temperature
             logits = cat((logits, next), dim=1)
-        
+            
         return logits
 
 

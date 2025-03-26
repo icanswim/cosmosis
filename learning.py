@@ -44,7 +44,7 @@ class Metrics():
                 self.metric_func = None
             elif self.metric_name in ['accuracy_score','roc_auc_score']:
                 self.metric_func = getattr(sk_metrics, self.metric_name)
-            elif self.metric_name in ['auc','multiclass_accuracy','multiclass_auprc']:
+            elif self.metric_name in ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']:
                 self.metric_func = getattr(t_metrics, self.metric_name)
             else:
                 raise Exception('hey just what you see pal...')
@@ -95,7 +95,7 @@ class Metrics():
         """
         if self.metric_func == None:
             return
-            
+
         y_pred = cat(self.y_pred, dim=0)
         y = cat(self.y, dim=0)
         
@@ -277,7 +277,7 @@ class Selector(Sampler):
         random.shuffle(self.train_idx)
         random.seed()
         
-        
+    
 class Learn():
     """
     Datasets = [TrainDS, ValDS, TestDS]
@@ -303,12 +303,12 @@ class Learn():
     or an object with a feature 'target' (data.target)
     the entire data object is passed to the model
     """
-    def __init__(self, Datasets, Model, Sampler=Selector, Metrics=Metrics,
+    def __init__(self, Datasets, Model, Sampler=Sampler, Metrics=Metrics,
                  DataLoader=DataLoader,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
-                 adapt=None, load_model=None, load_embed=True, save_model=False,
+                 adapt=None, load_model=None, load_embed=False, save_model=False,
                  batch_size=10, epochs=1, compile_model=False, 
                  gpu=True, weights_only=False, target='y'):
 
@@ -461,25 +461,25 @@ class Learn():
                     data = data.to('cuda:0', non_blocking=True)
 
             y_pred = self.model(data)   
-            if self.metrics.metric_func is not None: self.metrics.y_pred.append(y_pred)
             
-            if flag != 'infer':
+            if flag == 'infer':
+                self.metrics.predictions.append(y_pred)
+                y = None
+            else:
                 if type(data) == dict: y = data[self.target]
                 else: y = getattr(data, self.target)
-                    
-                if self.metrics.metric_func is not None: self.metrics.y.append(y)
                     
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
                 self.metrics.e_loss += b_loss.item()
                 self.metrics.n += self.bs
-
+                
+                if self.metrics.metric_func is not None: self.metrics.y.append(y)
+                if self.metrics.metric_func is not None: self.metrics.y_pred.append(y_pred)
+                    
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
-            else:
-                self.metrics.predictions.append(y_pred)
-                y = None
 
         if flag == 'val': 
             self.scheduler.step(self.metrics.e_loss)
