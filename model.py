@@ -9,7 +9,6 @@ from torch.nn import functional as F
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
     model_param = {}
-    device = 'cpu'/'cuda:0' 
     embed_param = {'feature': (voc, vec, padding_idx, trainable)}
         'feature' = name/key of feature to be embedded
         voc = vocabulary size (int) 
@@ -18,37 +17,35 @@ class CModel(nn.Module):
         param.requires_grad = True/False
 
     init_weights = True/False
-    
-        
-    datadict keywords:
-      
+
     """
     def __init__(self, model_param):
         super().__init__()
-
-        self.device = 'cuda:0'
-        if 'device' in model_param:  
-            self.device = model_param['device']
 
         self.data_keys = None
         if 'data_keys' in model_param:
             self.data_keys = model_param['data_keys']
 
+        self.gpu = 'cpu' #this is set by Learn()
+
         self.y = 'y'
         if 'y' in model_param:
             self.y = model_param['y']
-
+            
+        self.build(**model_param)    
+        if hasattr(self, 'layers'):
+            self.layers = nn.ModuleList(self.layers)
+            
         self.embed_param = None
         if 'embed_param' in model_param:
             self.embed_param = model_param['embed_param']
             self.embedding_layer = self.create_embedding_layer()
             if 'flatten' not in self.embed_param:
                 self.embed_param['flatten'] = False
+            else:
+                if 'start_dim' not in self.embed_param:
+                    self.embed_param['start_dim'] = 0
             
-        self.build(**model_param)    
-        if hasattr(self, 'layers'):
-            self.layers = nn.ModuleList(self.layers) 
-
         self.init_weights()
         print('{} model loaded...'.format(self.__class__.__name__))
         self.get_num_params()
@@ -100,7 +97,7 @@ class CModel(nn.Module):
         for feature, param in self.embed_param.items():                
             if type(param) == tuple and len(param) == 4:
                 voc, vec, padding_idx, trainable = param
-                embedding_layer[feature] = nn.Embedding(voc, vec, padding_idx).to(self.device)
+                embedding_layer[feature] = nn.Embedding(voc, vec, padding_idx).to(self.gpu)
                 embedding_layer[feature].weight.requires_grad = trainable
             else:
                 continue
@@ -155,7 +152,7 @@ class CModel(nn.Module):
             embedded_dict = self.embed_features(data)
             for e, embed in embedded_dict.items():
                 if self.embed_param['flatten']:
-                    embed = flatten(embed, start_dim=1)
+                    embed = flatten(embed, start_dim=self.embed_param['start_dim'])
                 embedded.append(embed)
                 filter_keys.append(e)
             embedded = cat(embedded, dim=-1) 
@@ -179,7 +176,7 @@ class CModel(nn.Module):
             if len(X) == 0:
                 X = embedded
             else:
-                X = cat([X.squeeze(), embedded], dim=-1)
+                X = cat([X, embedded], dim=-1)
         # pass the prepared features to the model 
         for l in self.layers:
             X = l(X)
@@ -187,7 +184,8 @@ class CModel(nn.Module):
         return X
     
     def adapt(self, in_channels, out_channels, dropout):
-        """prepends a trainable feedforward layer"""
+        """prepends a trainable feedforward layer.  
+        saving and reinitializing adapted models is problematic"""
         for l in self.ff_unit(in_channels, out_channels, activation=None, dropout=dropout)[::-1]:
             self.layers.insert(0, l)
             
@@ -408,7 +406,7 @@ class GPT(CModel):
             tokens = multinomial(probs.squeeze(), num_samples=1)
             tokens = transpose(tokens, 0, 1)
             data = {'tokens': tokens,
-                    'position': arange(0, tokens.shape[-1], dtype=long).to('cuda:0')}
+                    'position': arange(0, tokens.shape[-1], dtype=long).to(self.gpu)}
             next = self._forward(data)
             next = next[:,-1:,:]
             next = next * self.temperature

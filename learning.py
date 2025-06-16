@@ -72,7 +72,7 @@ class Metrics():
             predictions = np.asarray(predictions).reshape((1,-1))
             print('predictions: ', predictions)
         else:
-            predictions = self.predictions.detach().cpu().numpy()
+            predictions = cat(self.predictions).detach().cpu().numpy()
             print('predictions[-1]: ', predictions[-1])
             print('predictions.shape: ', predictions.shape)
             
@@ -111,7 +111,7 @@ class Metrics():
             y_pred = y_pred.detach().cpu().numpy()
             y = y.detach().cpu().numpy()
 
-        score = self.metric_func(y_pred, y, **self.metric_param) 
+        score = self.metric_func(y, y_pred, **self.metric_param) 
         score = score.item()
         
         if flag == 'train':
@@ -330,8 +330,6 @@ class Learn():
         self.metrics.log('\nepochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                         epochs, batch_size, save_model, load_model))
 
-        if not gpu: model_param['device'] = 'cpu'
-        
         if load_model is not None:
             try: 
                 model = Model(model_param)
@@ -342,7 +340,7 @@ class Learn():
                 print('model loaded from pickle...')                                                      
         else:
             model = Model(model_param)
-        
+
         if load_embed is True:
             try:
                 for feature, embedding in model.embedding_layer.items():
@@ -357,18 +355,22 @@ class Learn():
         if self.gpu == True:
             try:
                 model.to('cuda:0')
+                model.gpu = 'cuda:0'
                 print('running model on gpu...')
             except:
                 print('gpu not available.  running model on cpu...')
                 self.gpu = False
+                model.gpu = 'cpu'
         else:
             print('running model on cpu...')
+            model.gpu = 'cpu'
 
         if compile_model:
-            model = compile(model)
+            _model = compile(model)
+            self.model = _model
             print('compiling model...')
-            
-        self.model = model
+        else:
+            self.model = model
 
         self.metrics.log('\n{}'.format(self.model.children))
         # primary loop 
@@ -408,17 +410,21 @@ class Learn():
             else:
                 model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
 
-            if compile: 
-                save(model.state_dict(), './models/{}.pth'.format(model_name))
-            elif adapt: 
-                save(self.model, './models/{}.pth'.format(model_name))
-            else: 
+            if compile_model:
+                self.model = model #save from the pre-compiled model
+
+            try: 
                 save(self.model.state_dict(), './models/{}.pth'.format(model_name))
+                print('model state dict saved...')
+            except:
+                save(self.model, './models/{}.pth'.format(model_name))
+                print('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
+                print('model embeddings saved...')
 
             print('model: {} saved...'.format(model_name))
     
@@ -460,7 +466,7 @@ class Learn():
                 else: 
                     data = data.to('cuda:0', non_blocking=True)
 
-            y_pred = self.model(data)   
+            y_pred = self.model(data)
             
             if flag == 'infer':
                 self.metrics.predictions.append(y_pred)
