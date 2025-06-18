@@ -355,12 +355,12 @@ class Learn():
         if self.gpu == True:
             try:
                 model.to('cuda:0')
-                model.gpu = 'cuda:0'
+                model.device = 'cuda:0'
                 print('running model on gpu...')
             except:
                 print('gpu not available.  running model on cpu...')
                 self.gpu = False
-                model.gpu = 'cpu'
+                model.device = 'cpu'
         else:
             print('running model on cpu...')
             model.gpu = 'cpu'

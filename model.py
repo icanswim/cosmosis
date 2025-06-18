@@ -26,15 +26,11 @@ class CModel(nn.Module):
         if 'data_keys' in model_param:
             self.data_keys = model_param['data_keys']
 
-        self.gpu = 'cpu' #this is set by Learn()
+        self.device = 'cuda:0'
 
         self.y = 'y'
         if 'y' in model_param:
             self.y = model_param['y']
-            
-        self.build(**model_param)    
-        if hasattr(self, 'layers'):
-            self.layers = nn.ModuleList(self.layers)
             
         self.embed_param = None
         if 'embed_param' in model_param:
@@ -44,7 +40,12 @@ class CModel(nn.Module):
                 self.embed_param['flatten'] = False
             else:
                 if 'start_dim' not in self.embed_param:
-                    self.embed_param['start_dim'] = 0
+                    self.embed_param['start_dim'] = 0 
+                    
+        self.build(**model_param)
+        
+        if hasattr(self, 'layers'):
+            self.layers = nn.ModuleList(self.layers)
             
         self.init_weights()
         print('{} model loaded...'.format(self.__class__.__name__))
@@ -97,7 +98,7 @@ class CModel(nn.Module):
         for feature, param in self.embed_param.items():                
             if type(param) == tuple and len(param) == 4:
                 voc, vec, padding_idx, trainable = param
-                embedding_layer[feature] = nn.Embedding(voc, vec, padding_idx).to(self.gpu)
+                embedding_layer[feature] = nn.Embedding(voc, vec, padding_idx).to(self.device)
                 embedding_layer[feature].weight.requires_grad = trainable
             else:
                 continue
@@ -406,7 +407,7 @@ class GPT(CModel):
             tokens = multinomial(probs.squeeze(), num_samples=1)
             tokens = transpose(tokens, 0, 1)
             data = {'tokens': tokens,
-                    'position': arange(0, tokens.shape[-1], dtype=long).to(self.gpu)}
+                    'position': arange(0, tokens.shape[-1], dtype=long).to(self.device)}
             next = self._forward(data)
             next = next[:,-1:,:]
             next = next * self.temperature
