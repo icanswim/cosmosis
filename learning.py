@@ -1,7 +1,5 @@
 from datetime import datetime
-import logging
-import random
-import os
+import logging, random, os, gc
 
 os.environ['NUMEXPR_MAX_THREADS'] = '16'
 
@@ -9,7 +7,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, cat, as_tensor, compile, permute, arange, int64
+from torch import no_grad, save, load, from_numpy, cat, as_tensor
+from torch import compile, permute, arange, int64, float32, cuda
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -21,9 +20,12 @@ from sklearn import metrics as sk_metrics
 class Metrics():
     """
     """
+    sk_metrics = ['accuracy_score','roc_auc_score']
+    torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
+    
     def __init__(self, report_interval=10, metric_name=None, 
                      log_plot=False, min_lr=.00125, metric_param={}):
-        
+
         now = datetime.now()
         self.start = now
         self.report_time = now
@@ -42,10 +44,14 @@ class Metrics():
         if self.metric_name is not None:
             if self.metric_name in ['transformer']:
                 self.metric_func = None
-            elif self.metric_name in ['accuracy_score','roc_auc_score']:
+            elif self.metric_name in Metrics.sk_metrics:
                 self.metric_func = getattr(sk_metrics, self.metric_name)
-            elif self.metric_name in ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']:
+            elif self.metric_name in Metrics.torch_metrics:
                 self.metric_func = getattr(t_metrics, self.metric_name)
+                try:
+                    self.metric_func.to('cuda:0')
+                except:
+                    print('torch metric failed to be put on the gpu...')
             else:
                 raise Exception('hey just what you see pal...')
                 
@@ -95,25 +101,28 @@ class Metrics():
         """
         if self.metric_func == None:
             return
-
+        
         y_pred = cat(self.y_pred, dim=0)
         y = cat(self.y, dim=0)
-        
-        if self.metric_name in ['roc_auc_score','auc','accuracy_score',
-                                    'multiclass_accuracy','multiclass_auprc']:
+
+        # preprocess
+        if self.metric_name in ['accuracy_score','multiclass_accuracy','multiclass_auprc']:
             y_pred = F.softmax(y_pred, dim=-1)
 
-        if self.metric_name in ['accuracy_score','auc','multiclass_accuracy']:
+        if self.metric_name in ['accuracy_score','multiclass_accuracy']:
             y_pred = y_pred.argmax(dim=-1)
 
-        # sklearn metrics
-        if self.metric_name in ['accuracy_score','roc_auc_score']:
+        # sklearn metrics preprocess
+        if self.metric_name in Metrics.sk_metrics:
             y_pred = y_pred.detach().cpu().numpy()
             y = y.detach().cpu().numpy()
+            
+        # torch metrics preprocess
+        if self.metric_name in Metrics.torch_metrics: pass
 
-        score = self.metric_func(y, y_pred, **self.metric_param) 
+        score = self.metric_func(y_pred, y, **self.metric_param)
         score = score.item()
-        
+
         if flag == 'train':
             self.metric_train_log.append(score)
         else:
@@ -122,7 +131,7 @@ class Metrics():
     def log(self, message):
         logging.info(message)
         
-    def report(self, _y_pred, _y, flag):
+    def report(self, y_pred, y, flag):
         """
         called at the end of each run() loop
         """
@@ -141,12 +150,11 @@ class Metrics():
         if len(self.predictions) > 0: 
             print('len(self.predictions): ', len(self.predictions))
             return
-
-        # get the last instance
-        y_pred = _y_pred[-1]
-        y = _y[-1]
         
         if self.metric_name == 'transformer':
+            # get the last instance
+            y_pred = y_pred[-1]
+            y = y[-1]
             y_pred = F.softmax(y_pred, dim=-1)
             y_pred = y_pred.argmax(dim=0)
             y_pred = y_pred.detach().cpu().numpy().tolist()
@@ -154,8 +162,8 @@ class Metrics():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        print('y_pred: ', y_pred)
-        print('y: ', y)
+        print('y_pred last 10: ', y_pred[-10:])
+        print('y last 10: ', y[-10:])
         print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
         print('lr: {}'.format(self.lr_log[-1]))
     
@@ -204,7 +212,6 @@ class Metrics():
         pd.DataFrame(logs, columns=cols).to_csv('./logs/'+self.start.strftime("%Y%m%d_%H%M"))
         self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'), self.log_plot)
 
-        
     @classmethod    
     def view_log(cls, log_file, log_plot):
         log = pd.read_csv(log_file)
@@ -321,7 +328,8 @@ class Learn():
         self.DataLoader = DataLoader
         
         self.metrics = Metrics(**metrics_param)
-        if hasattr(self.train_ds, 'encoding'):
+        self.metrics.gpu = gpu
+        if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
             self.metrics.decoder = self.train_ds.encoding.decode
         
         self.metrics.log('\nmodel: {}\n{}'.format(Model, model_param))
@@ -427,7 +435,13 @@ class Learn():
                 print('model embeddings saved...')
 
             print('model: {} saved...'.format(model_name))
-    
+        
+        #del self.model
+        #del self.metrics
+        gc.collect()
+        cuda.empty_cache()
+
+        
     def run(self, flag): # secondary loop
         
         if flag == 'train': 

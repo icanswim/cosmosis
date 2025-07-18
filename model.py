@@ -71,7 +71,12 @@ class CModel(nn.Module):
             self.apply(self._init_weights)
         else:
             print('default weight initialization...')
-     
+
+    def reset_parameters(self):
+        for m in self.layers:
+            if hasattr(m, 'reset_parameters'):
+                m.reset_parameters()
+         
     def get_num_params(self):
         n_params = sum(p.numel() for p in self.parameters())
         print('number of model parameters: ', n_params) 
@@ -191,23 +196,24 @@ class CModel(nn.Module):
             self.layers.insert(0, l)
             
     def ff_unit(self, in_channels, out_channels, 
-                    activation=nn.ReLU, norm=True, dropout=.2):
+                    activation='ReLU', norm=True, dropout=.2):
+        
         ffu = []
         ffu.append(nn.Linear(in_channels, out_channels))
         if norm: ffu.append(nn.BatchNorm1d(out_channels))
-        if activation is not None: ffu.append(activation())
-        if dropout is not None:  ffu.append(nn.Dropout(dropout))
+        if activation is not None: ffu.append(getattr(nn, activation)())
+        if dropout is not None: ffu.append(nn.Dropout(dropout))
             
         return nn.Sequential(*ffu)
     
     def conv_unit(self, in_channels, out_channels, kernel_size=3, 
                   stride=1, padding=1, dilation=1, groups=1, bias=False, 
-                  activation=nn.ReLU, dropout=None, pool=(5,2,1)):
+                  activation='ReLU', dropout=None, pool=(5,2,1)):
         conv = []
         conv.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
         conv.append(nn.BatchNorm2d(out_channels))
-        if activation is not None: conv.append(activation())
+        if activation is not None: ffu.append(getattr(nn, activation)())
         if pool is not None: conv.append(nn.MaxPool2d(kernel_size=pool[0], stride=pool[1], padding=pool[2]))
         conv.append(nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, 
                               stride=stride, padding=padding, dilation=dilation, bias=bias))
@@ -254,23 +260,22 @@ class FFNet(CModel):
                                         (1,1/2),(1/2,1/2),(1/2,'out_channels')], 
                               'dropout': [.1, .2, .3, .1, .2]}
 
-    def build(self, model_name='funnel', act='relu', 
+    def build(self, model_name='funnel', activation='ReLU', 
                   in_channels=0, hidden=0, out_channels=0, **kwargs):
-        
-        activation = {'gelu': nn.GELU, 'relu': nn.ReLU}
+
         config = FFNet.model_config[model_name]
         self.layers = []
         
         self.layers.append(self.ff_unit(in_channels, int(config['shape'][0][1]*hidden),
                                         dropout=config['dropout'][0],
                                         norm=True,
-                                        activation=activation[act]))
+                                        activation=activation))
         
         for i, s in enumerate(config['shape'][1:-1]):
             self.layers.append(self.ff_unit(int(s[0]*hidden), int(s[1]*hidden), 
                                             dropout=config['dropout'][i+1],
                                             norm=True,
-                                            activation=activation[act]))
+                                            activation=activation))
             
         self.layers.append(self.ff_unit(int(config['shape'][-1][0]*hidden), out_channels,
                                         dropout=None,
