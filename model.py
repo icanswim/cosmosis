@@ -17,18 +17,22 @@ class CModel(nn.Module):
         param.requires_grad = True/False
 
     init_weights = True/False
+    data_keys = ['X'] use if passing a data object (as opposed to a data dict), a list of 
+        features to be exacted, concatenated and passed to the model
+
+    y = 'y' the feature NOT to be passed to the model
 
     """
     def __init__(self, model_param):
         super().__init__()
 
-        self.data_keys = None
+        self.data_keys = ['X']
         if 'data_keys' in model_param:
             self.data_keys = model_param['data_keys']
 
         self.device = 'cuda:0'
 
-        self.y = 'y'
+        self.y = 'y' # target feature label
         if 'y' in model_param:
             self.y = model_param['y']
             
