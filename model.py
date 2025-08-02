@@ -30,7 +30,10 @@ class CModel(nn.Module):
         if 'data_keys' in model_param:
             self.data_keys = model_param['data_keys']
 
-        self.device = 'cuda:0'
+        if 'device' in model_param:
+            self.device = model_param['device']
+        else:
+            self.device = 'cuda:0'
 
         self.y = 'y' # target feature label
         if 'y' in model_param:
@@ -69,7 +72,6 @@ class CModel(nn.Module):
                 if module.bias is not None:
                     torch.nn.init.func_(module.bias)
         """
-        
         if hasattr(self, '_init_weights'):
             print('applying _init_weights...')
             self.apply(self._init_weights)
@@ -136,9 +138,10 @@ class CModel(nn.Module):
                 if type(data) == dict:
                     embed = self.embedding_layer[feature](data[feature])
                 elif hasattr(data, feature):
-                    embed = self.embedding_layer[feature](data.feature)
+                    embed = self.embedding_layer[feature](getattr(data, feature))
                 else:
-                    embed = self.embedding_layer[feature](data) 
+                    embed = self.embedding_layer[feature](data)
+                
                 embedded[feature] = embed
 
         return embedded
