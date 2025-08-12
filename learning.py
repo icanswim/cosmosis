@@ -48,10 +48,6 @@ class Metrics():
                 self.metric_func = getattr(sk_metrics, self.metric_name)
             elif self.metric_name in Metrics.torch_metrics:
                 self.metric_func = getattr(t_metrics, self.metric_name)
-                try:
-                    self.metric_func.to('cuda:0')
-                except:
-                    print('torch metric failed to be put on the gpu...')
             else:
                 raise Exception('hey just what you see pal...')
                 
@@ -117,10 +113,13 @@ class Metrics():
             y_pred = y_pred.detach().cpu().numpy()
             y = y.detach().cpu().numpy()
             
-        # torch metrics preprocess
-        if self.metric_name in Metrics.torch_metrics: pass
-
-        score = self.metric_func(y_pred, y, **self.metric_param)
+        # torch metrics
+        if self.metric_name in Metrics.torch_metrics: 
+            score = self.metric_func(y_pred, y, **self.metric_param)
+        else:
+        # sklearn
+            score = self.metric_func(y, y_pred, **self.metric_param)
+        
         score = score.item()
 
         if flag == 'train':
@@ -162,8 +161,8 @@ class Metrics():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        print('y_pred last 10: ', y_pred[-10:])
-        print('y last 10: ', y[-10:])
+        print('y_pred last 10:\n', y_pred[-10:])
+        print('y last 10:\n', y[-10:])
         print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
         print('lr: {}'.format(self.lr_log[-1]))
     
@@ -317,9 +316,10 @@ class Learn():
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
                  batch_size=10, epochs=1, compile_model=False, 
-                 gpu=True, weights_only=False, target='y'):
+                 gpu=True, weights_only=False, num_workers=4, target='y'):
 
         self.weights_only = weights_only
+        self.num_workers = num_workers
         self.gpu = gpu
         self.bs = batch_size
         self.target = target
@@ -467,7 +467,7 @@ class Learn():
             
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
-                                     num_workers=0, pin_memory=True, 
+                                     num_workers=self.num_workers, pin_memory=True, 
                                      drop_last=drop_last)
         # tertiary loop
         for data in dataloader:
