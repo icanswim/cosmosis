@@ -155,6 +155,55 @@ class ExampleDataset(CDataset):
         
         print(boom)
         return datadic
+
+class TDataset(CDataset):
+    """Transfomer Dataset
+    """
+    def __getitem__(self, i):
+        
+        X = self.ds[i:i+self.d_seq].astype(np.int64)
+        y = self.ds[i+1:i+1+self.d_seq].astype(np.int64)
+        pos = np.arange(0, self.d_seq, dtype=np.int64) 
+        
+        _data = {'tokens': X, 'y': y, 'position': pos}
+        data = {}
+        
+        for feature, Transforms in self.transforms.items():
+            out = _data[feature]
+            for T in Transforms:
+                out = T(out)
+            data[feature] = out
+            
+        del _data
+        return data
+
+    def prompt(self, prompt):
+        # tokenize the prompt
+        tokens = self.encoding.encode_ordinary(prompt)
+        ds = np.array(tokens, dtype=np.uint16)
+        self.d_seq = ds.shape[-1]
+        return ds
+
+    @abstractmethod
+    def load_data(self, d_seq=1, n=1, ds_name='', prompt=None, tokenizer=None):
+        
+        self.encoding = tokenizer
+        self.d_seq, self.n = d_seq, n
+
+        if prompt == None:
+            ds = load_some_dataset()
+            ds_idx = list(range(ds.shape[-1]-self.d_seq))
+        
+            if n != len(ds_idx): #subset
+                ds_idx = list(np.random.choice(ds_idx, size=n, replace=False))
+            self.ds_idx = ds_idx
+        else:
+            ds = self.prompt(prompt)
+            self.ds_idx = [0]
+
+        print('len(self.ds_idx): ', len(self.ds_idx))
+        print('data.nbytes: ', ds.nbytes)
+        return ds
     
 class EmbedLookup():
     """A transform which converts a list of categorical features to an array of ints which

@@ -130,7 +130,7 @@ class CModel(nn.Module):
                        'some_param': True}
         
         returns embedded = {'feature': torch.tensor,
-                            'feature2': torch.tensor}
+                            'feature_3': torch.tensor}
         """
         embedded = {}
         for feature, param in self.embed_param.items():
@@ -384,8 +384,10 @@ class GPT(CModel):
             nn.init.normal_(module.weight, mean=0.0, std=.02)
 
     def forward(self, data):
+        #pass a small dataset which contains the tokenized prompt and position sequence
+        #to start the generative loop
         if self.generate is True:
-            return self._generate(data)
+            return self._generate(data)  
         else: 
             logits = self._forward(data)
             if logits.dim() == 3:
@@ -405,8 +407,7 @@ class GPT(CModel):
 
     def _generate(self, prompt):
         """
-        prompt = {'tokens': torch.array,
-                  'positions': torch.array}     
+        prompt = {'tokens': 'some words'}     
         logits = (n_batch, d_gen, d_vocab)
         self.d_gen >= len(prompt)
         """
