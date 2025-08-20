@@ -15,16 +15,18 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class CDataset(Dataset, ABC):
-    """An abstract base class for cosmosis datasets
+    """Cosmosis Dataset
+    
+    An abstract base class for cosmosis datasets
     
     embed_param = {'feature': (voc,vec,padding_idx,trainable),
                    'feature_3': (4,16,0,True),
                    'feature_4': (5,16,0,True),
                    'some_param': True}
     
-    lookup_feature_3 = ExampleDataset.embed_lookup['feature_3']
-    lookup_feature_4 = ExampleDataset.embed_lookup['feature_4']
-    lookup_feature_6 = ExampleDataset.embed_lookup['feature_6']
+    vocab_feature_3 = ExampleDataset.vocab['feature_3']
+    vocab_feature_4 = ExampleDataset.vocab['feature_4']
+    vocab_feature_6 = ExampleDataset.vocab['feature_6']
     
     ds_param = {'train_param': {'input_dict': {
                                                'X2': ['feature_1','feature_2'], 
@@ -35,10 +37,10 @@ class CDataset(Dataset, ABC):
                                                 },
                                 'transforms': {'feature_1': [ExampleTransform(10), AsTensor()],
                                                'feature_2': [Reshape(-1), AsTensor()],
-                                               'feature_3': [Pad1d(5), EmbedLookup(lookup_feature_3), AsTensor()],
-                                               'feature_4': [Pad1d(5), EmbedLookup(lookup_feature_4), AsTensor()],
+                                               'feature_3': [Pad1d(5), Encode(vocab_feature_3), AsTensor()],
+                                               'feature_4': [Pad1d(5), Encode(vocab_feature_4), AsTensor()],
                                                'feature_5': [AsTensor()],
-                                               'feature_6': [Pad1d(5), EmbedLookup(lookup_feature_6), AsTensor()]},
+                                               'feature_6': [Pad1d(5), Encode(vocab_feature_6), AsTensor()]},
                                   'boom': 'bang'}}           
     
     keywords: 'input_dict'
@@ -74,10 +76,10 @@ class CDataset(Dataset, ABC):
             if no ds_idx provided the entire dataset will be used, 
             optionally this could be passed to the Selector/Sampler class in its sample_param
         """
-        #zero is the lookup for the padding index
-        self.embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
-                             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
-                             'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+        #zero is the vocab for the padding index
+        self.vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
+                       'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+                       'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
         
         datadic = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([[.02,.03],[.04,.05]]),
@@ -133,10 +135,10 @@ class CDataset(Dataset, ABC):
 
 
 class ExampleDataset(CDataset):
-    #zero is the lookup for the padding index
-    embed_lookup = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
-                    'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
-                    'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+    #zero is the vocab for the padding index
+    vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
+              'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+              'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
     
     def load_data(self, boom='bust'):
         
@@ -205,20 +207,20 @@ class TDataset(CDataset):
         print('data.nbytes: ', ds.nbytes)
         return ds
     
-class EmbedLookup():
-    """A transform which converts a list of categorical features to an array of ints which
-    can then be fed to an embedding layer
+class Encode():
+    """A transform which converts a list of categorical features to an array of ints 
+    (which can then be fed to an embedding layer)
     
     arr = numpy array or list of categorical values
-    embed_lookup = {'feature': int, '0': 0} # 0 is padding value
+    vocab = {'feature': int, '0': 0} # 0 is padding value
     """
-    def __init__(self, embed_lookup={}):
-        self.embed_lookup = embed_lookup
+    def __init__(self, vocab={}):
+        self.vocab = vocab
 
     def __call__(self, arr):
         idx = []
-        for i in np.reshape(arr, -1).tolist():
-            idx.append(np.reshape(np.asarray(self.embed_lookup[i]), -1).astype('int64'))
+        for i in np.reshape(arr, -1):
+            idx.append(np.reshape(np.asarray(self.vocab[i]), -1).astype('int64'))
         return np.hstack(idx)
     
 class Pad1d():
