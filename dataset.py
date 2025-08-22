@@ -206,7 +206,8 @@ class TDataset(CDataset):
         print('len(self.ds_idx): ', len(self.ds_idx))
         print('data.nbytes: ', ds.nbytes)
         return ds
-    
+
+
 class Encode():
     """A transform which converts a list of categorical features to an array of ints 
     (which can then be fed to an embedding layer)
@@ -216,12 +217,22 @@ class Encode():
     """
     def __init__(self, vocab={}):
         self.vocab = vocab
+        self.rev_vocab = {v: k for k, v in self.vocab.items()}
 
-    def __call__(self, arr):
+    def __call__(self, tokens):
         idx = []
-        for i in np.reshape(arr, -1):
+        for i in np.reshape(tokens, -1):
             idx.append(np.reshape(np.asarray(self.vocab[i]), -1).astype('int64'))
+            
         return np.hstack(idx)
+
+    def decode(self, idx):
+        tokens = []
+        for i in np.reshape(idx, -1):
+            tokens.append(self.rev_vocab[i])
+
+        return tokens
+    
     
 class Pad1d():
     """Transforms a numpy array"""
