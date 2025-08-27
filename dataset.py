@@ -184,6 +184,7 @@ class TDataset(CDataset):
         tokens = self.encoding.encode_ordinary(prompt)
         ds = np.array(tokens, dtype=np.uint16)
         self.d_seq = ds.shape[-1]
+        self.ds_idx = [0]
         return ds
 
     @abstractmethod
@@ -213,10 +214,11 @@ class Encode():
     (which can then be fed to an embedding layer)
     
     arr = numpy array or list of categorical values
-    vocab = {'feature': int, '0': 0} # 0 is padding value
+    vocab = {'feature': int, 'pad_token': 0} # 0 is padding value
     """
-    def __init__(self, vocab={}):
+    def __init__(self, vocab={}, pad_token='0', pad_value=0):
         self.vocab = vocab
+        self.vocab[pad_token] = pad_value
         self.rev_vocab = {v: k for k, v in self.vocab.items()}
 
     def __call__(self, tokens):
