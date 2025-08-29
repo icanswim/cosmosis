@@ -214,7 +214,7 @@ class Encode():
     (which can then be fed to an embedding layer)
     
     arr = numpy array or list of categorical values
-    vocab = {'feature': int, 'pad_token': 0} # 0 is padding value
+    vocab = {'feature': int, 'pad_token': pad_value} 
     """
     def __init__(self, vocab={}, pad_token='0', pad_value=0):
         self.vocab = vocab
