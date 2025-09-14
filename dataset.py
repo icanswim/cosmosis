@@ -137,8 +137,8 @@ class CDataset(Dataset, ABC):
 class ExampleDataset(CDataset):
     #zero is the vocab for the padding index
     vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
-              'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
-              'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+             'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+             'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
     
     def load_data(self, boom='bust'):
         
@@ -157,56 +157,6 @@ class ExampleDataset(CDataset):
         
         print(boom)
         return datadic
-
-class TDataset(CDataset):
-    """Transfomer Dataset
-    """
-    def __getitem__(self, i):
-        
-        X = self.ds[i:i+self.d_seq].astype(np.int64)
-        y = self.ds[i+1:i+1+self.d_seq].astype(np.int64)
-        pos = np.arange(0, self.d_seq, dtype=np.int64) 
-        
-        _data = {'tokens': X, 'y': y, 'position': pos}
-        data = {}
-        
-        for feature, Transforms in self.transforms.items():
-            out = _data[feature]
-            for T in Transforms:
-                out = T(out)
-            data[feature] = out
-            
-        del _data
-        return data
-
-    def prompt(self, prompt):
-        # tokenize the prompt
-        tokens = self.encoding.encode_ordinary(prompt)
-        ds = np.array(tokens, dtype=np.uint16)
-        self.d_seq = ds.shape[-1]
-        self.ds_idx = [0]
-        return ds
-
-    @abstractmethod
-    def load_data(self, d_seq=1, n=1, ds_name='', prompt=None, tokenizer=None):
-        
-        self.encoding = tokenizer
-        self.d_seq, self.n = d_seq, n
-
-        if prompt == None:
-            ds = load_some_dataset()
-            ds_idx = list(range(ds.shape[-1]-self.d_seq))
-        
-            if n != len(ds_idx): #subset
-                ds_idx = list(np.random.choice(ds_idx, size=n, replace=False))
-            self.ds_idx = ds_idx
-        else:
-            ds = self.prompt(prompt)
-            self.ds_idx = [0]
-
-        print('len(self.ds_idx): ', len(self.ds_idx))
-        print('data.nbytes: ', ds.nbytes)
-        return ds
 
 
 class Encode():
@@ -234,7 +184,52 @@ class Encode():
             tokens.append(self.rev_vocab[i])
 
         return tokens
-    
+
+
+class TDataset(CDataset):
+    """Transfomer Dataset
+    self.ds = ['token','token','token']
+    """
+    def __getitem__(self, i):
+        
+        X = self.ds[i:i+self.d_seq]
+        y = self.ds[i+1:i+1+self.d_seq]
+        pos = np.arange(0, self.d_seq, dtype=np.int64) 
+        
+        _data = {'tokens': X, 'y': y, 'position': pos}
+        data = {}
+        
+        for feature in _data:
+            out = _data[feature]
+            if feature in self.transforms:
+                Transforms = self.transforms[feature]
+                for T in Transforms:
+                    out = T(out)
+            data[feature] = out
+            
+        del _data
+        return data
+
+    @abstractmethod
+    def load_data(self, d_seq=1, prompt=None, tokenizer=None, encoder=Encode, vocab={}):
+        #tokenize in the loading step
+        self.tokenizer = tokenizer
+        self.encoder = encoder(vocab=vocab)
+        self.d_seq = d_seq
+
+        if prompt == None:
+            ds = self.encoder(self.tokenizer(load_some_strings()))
+            ds_idx = list(range(ds.shape[-1]-self.d_seq))
+            self.ds_idx = ds_idx
+        else:
+            ds = self.encoder(self.tokenzier(prompt))
+            self.ds_idx = [0]
+            self.d_seq = ds.shape[0]
+
+        print('len(self.ds_idx): ', len(self.ds_idx))
+        print('data.nbytes: ', ds.nbytes)
+        return ds
+
     
 class Pad1d():
     """Transforms a numpy array"""
@@ -272,11 +267,14 @@ class LoadImage():
 
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
+    def __init__(self, datatype=None):
+        self.datatype = datatype
+        
     def __call__(self, arr):
         if type(arr) == list:
-            return [as_tensor(arr[0])] #embedding indices
+            return [as_tensor(arr[0], dtype=self.datatype)] #embedding indices
         else:
-            return as_tensor(arr)
+            return as_tensor(arr, dtype=self.datatype)
         
 class AsSparse():
     """Transforms a numpy array to a torch sparse tensor"""
@@ -300,6 +298,13 @@ class Concat():
     """Transforms a list of numpy arrays"""
     def __call__(self, data):
         return np.concatenate(data)
+
+class AsArray():
+    """Transforms a list to a numpy array"""
+    def __init__(self, datatype=None):
+        self.datatype = datatype
+    def __call__(self, data):
+        return np.asarray(data, dtype=self.datatype)
     
 class Transpose():
     """Transforms a numpy array"""
