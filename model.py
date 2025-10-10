@@ -58,7 +58,7 @@ class CModel(nn.Module):
         print('{} model loaded...'.format(self.__class__.__name__))
         self.get_num_params()
                             
-    def build(self, **kwargs):
+    def build(self, **model_params):
         self.layers = []
         raise NotImplementedError('subclass and implement build()...')
 
