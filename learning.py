@@ -163,8 +163,8 @@ class Metrics():
             print('y_pred last 100:\n', y_pred[-100:])
             print('y last 100:\n', y[-100:])
         else:
-            print('y_pred last 10:\n', y_pred[-10:])
-            print('y last 10:\n', y[-10:])
+            print('y_pred last 10:\n', y_pred)
+            print('y last 10:\n', y)
         
         print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
         print('lr: {}'.format(self.lr_log[-1]))
