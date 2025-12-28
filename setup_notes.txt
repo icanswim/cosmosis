@@ -1,4 +1,4 @@
-#instructions for setting up folders and conda enviornment
+#instructions for setting up folders and conda environment
 
 ##create a new cosmosis conda environment and folders
 git clone https://github.com/icanswim/cosmosis.git

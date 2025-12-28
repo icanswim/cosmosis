@@ -24,12 +24,13 @@ class Metrics():
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=10, metric_name=None, 
-                     log_plot=False, min_lr=.00125, metric_param={}):
+                     log_plot=False, min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
+        self.last_n = last_n
         self.log_plot = log_plot
         self.min_lr = min_lr
         
@@ -160,12 +161,9 @@ class Metrics():
             y_pred = self.decoder(y_pred)
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
-            print('y_pred last 100:\n', y_pred[-100:])
-            print('y last 100:\n', y[-100:])
-        else:
-            print('y_pred last 10:\n', y_pred)
-            print('y last 10:\n', y)
-        
+            
+        print('y_pred last {} values:\n'.format(self.last_n), y_pred[-self.last_n:])
+        print('y last {} values:\n'.format(self.last_n), y[-self.last_n:])
         print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
         print('lr: {}'.format(self.lr_log[-1]))
     
@@ -444,8 +442,8 @@ class Learn():
         gc.collect()
         cuda.empty_cache()
 
-        
-    def run(self, flag): # secondary loop
+    # secondary loop
+    def run(self, flag): 
         
         if flag == 'train': 
             self.model.training = True
