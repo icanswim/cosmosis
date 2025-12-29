@@ -24,7 +24,7 @@ class Metrics():
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=10, metric_name=None, 
-                     log_plot=False, min_lr=.00125, last_n=1, metric_param={}):
+                     log_plot=False, min_lr=.00125, last_n=5, metric_param={}):
 
         now = datetime.now()
         self.start = now
@@ -294,9 +294,11 @@ class Learn():
         
     Criterion = None implies inference mode
     
-    load_model = None/'saved_model.pth'/'saved_model.pk'
+    load_model = None/'model_name.pth'/'model_name.pk'
     
-    load_embed = None/'model_name'
+    load_embed = True/False 
+
+    save_model = None/'model_name.pth'
     
     adapt = (D_in, D_out, dropout)
         prepends a trainable linear layer
@@ -420,13 +422,13 @@ class Learn():
                 model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
 
             if compile_model:
-                self.model = model #save from the pre-compiled model
+                self.model = model # save from the pre-compiled model
 
             try: 
-                save(self.model.state_dict(), './models/{}.pth'.format(model_name))
+                save(self.model.state_dict(), './models/{}'.format(model_name))
                 print('model state dict saved...')
             except:
-                save(self.model, './models/{}.pth'.format(model_name))
+                save(self.model, './models/{}'.format(model_name))
                 print('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
