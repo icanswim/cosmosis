@@ -23,10 +23,11 @@ class Metrics():
     sk_metrics = ['accuracy_score','roc_auc_score']
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
-    def __init__(self, report_interval=10, metric_name=None, 
-                     log_plot=False, min_lr=.00125, last_n=5, metric_param={}):
+    def __init__(self, report_interval=10, metric_name=None, log_plot=False,
+                    filename='./logs/cosmosis.log', min_lr=.00125, last_n=5, metric_param={}):
 
         now = datetime.now()
+        self.filename = filename
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -52,7 +53,7 @@ class Metrics():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        logging.basicConfig(filename='./logs/cosmosis.log', level=20)
+        logging.basicConfig(filename=self.filename, level=20)
         self.log('\n.....................\n')
         self.log('\nNew Experiment: {}'.format(self.start))
     
