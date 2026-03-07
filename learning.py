@@ -7,8 +7,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, cat, as_tensor
-from torch import compile, permute, arange, int64, float32, cuda
+from torch import no_grad, save, load, from_numpy, cat, gc
+from torch import compile, cuda
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -24,10 +24,11 @@ class Metrics():
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=10, metric_name=None, log_plot=False,
-                    filename='./logs/cosmosis.log', min_lr=.00125, last_n=5, metric_param={}):
+                    dir='.', min_lr=.00125, last_n=5, metric_param={}):
 
         now = datetime.now()
-        self.filename = filename
+        self.dir = dir
+        os.mkdir(self.dir + '/log', exist_ok=True)
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -53,7 +54,7 @@ class Metrics():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        logging.basicConfig(filename=self.filename, level=20)
+        logging.basicConfig(filename=self.dir + '/cosmosis.log', level=20)
         self.log('\n.....................\n')
         self.log('\nNew Experiment: {}'.format(self.start))
     
@@ -62,28 +63,19 @@ class Metrics():
         process the predictions and save
         """
         now = datetime.now()
-        print('\n.....................\n')
         self.log('\n.....................\n')
         self.log('\ninference job: {} \n'.format(self.start))
         self.log('\ntotal learning time: {} \n'.format(now - self.start))
-        print('total learning time: {}'.format(now - self.start))
-        
+
         if self.metric_name == 'transformer':
             predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
             predictions = predictions.argmax(dim=-1)
             predictions = predictions.detach().cpu().numpy().tolist()
             predictions = self.decoder(predictions)
             predictions = np.asarray(predictions).reshape((1,-1))
-            print('predictions: ', predictions)
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
-            print('predictions[-1]: ', predictions[-1])
-            print('predictions.shape: ', predictions.shape)
-            
-        pd.DataFrame(predictions).to_csv(
-                    './logs/{}_inference.csv'.format(now), index=True)
-        print('inference instance {} complete and saved to csv...'.format(now))
-        self.log('\ninference instance {} saved to csv...'.format(now))
+        self.log('predictions: ', predictions)
         self.predictions = []
         
     def softmax_overflow(x):
@@ -143,13 +135,12 @@ class Metrics():
         if elapsed.total_seconds() < self.report_interval: return
             
         tot_elapsed = now - self.start
-        print('\n.....................\n')
-        print('total elapsed time: {}'.format(tot_elapsed))
-        print('epoch: {}'.format(self.epoch))
+        self.log('total elapsed time: {}'.format(tot_elapsed))
+        self.log('epoch: {}'.format(self.epoch))
         self.report_time = now
 
         if len(self.predictions) > 0: 
-            print('len(self.predictions): ', len(self.predictions))
+            self.log('len(self.predictions): {}'.format(len(self.predictions)))
             return
         
         if self.metric_name == 'transformer':
@@ -163,13 +154,13 @@ class Metrics():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        print('y_pred last {} values:\n'.format(self.last_n), y_pred[-self.last_n:])
-        print('y last {} values:\n'.format(self.last_n), y[-self.last_n:])
-        print('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-        print('lr: {}'.format(self.lr_log[-1]))
-    
+        self.log('y_pred last {} values:\n'.format(self.last_n), y_pred[-self.last_n:])
+        self.log('y last {} values:\n'.format(self.last_n), y[-self.last_n:])
+        self.log('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
+        self.log('lr: {}'.format(self.lr_log[-1]))
+
         if len(self.metric_train_log) != 0:
-            print('{} train score: {}, validation score: {}'.format(
+            self.log('{} train score: {}, validation score: {}'.format(
                 self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
     
     def loss(self, flag):
@@ -192,32 +183,14 @@ class Metrics():
 
     def final(self):
         now = datetime.now()
-        print('\n........final........\n')
         self.log('\n........final........\n')
         self.log('\ntotal learning time: {}'.format(now - self.start))
-        print('total learning time: {}'.format(now - self.start))
-        
+
         if len(self.test_loss) != 0:
             self.log('test loss: {}'.format(self.test_loss))
-            print('test loss: {}'.format(self.test_loss[-1]))
             
         if len(self.metric_train_log) != 0:
             self.log('\n{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
-            print('{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
-            logs = zip(self.train_loss, self.val_loss, self.lr_log, self.metric_val_log)
-            cols = ['train_loss','validation_loss','learning_rate',self.metric_name]
-        else:
-            logs = zip(self.train_loss, self.val_loss, self.lr_log)
-            cols = ['train_loss','validation_loss','learning_rate']
-        
-        pd.DataFrame(logs, columns=cols).to_csv('./logs/'+self.start.strftime("%Y%m%d_%H%M"))
-        self.view_log('./logs/'+self.start.strftime('%Y%m%d_%H%M'), self.log_plot)
-
-    @classmethod    
-    def view_log(cls, log_file, log_plot):
-        log = pd.read_csv(log_file)
-        log.iloc[:,1:5].plot(logy=log_plot)
-        plt.show() 
 
 
 class Selector(Sampler):
@@ -319,9 +292,12 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, compile_model=False, 
-                 gpu=True, weights_only=False, num_workers=4, target='y'):
-
+                 batch_size=10, epochs=1, compile_model=False, dir='.',
+                 gpu=True, weights_only=False, num_workers=3, target='y'):
+        
+        self.dir = dir
+        os.mkdir(self.dir + '/model', exist_ok=True)
+        os.mkdir(self.dir + '/data ', exist_ok=True)
         self.weights_only = weights_only
         self.num_workers = num_workers
         self.gpu = gpu
@@ -345,22 +321,22 @@ class Learn():
         if load_model is not None:
             try: 
                 model = Model(model_param)
-                model.load_state_dict(load('./models/'+load_model, weights_only=self.weights_only))
-                print('model loaded from state_dict...')
+                model.load_state_dict(load(self.dir + '/models/'+load_model, weights_only=self.weights_only))
+                self.metrics.log('model loaded from state_dict...')
             except:
-                model = load('./models/'+load_model, weights_only=self.weights_only)
-                print('model loaded from pickle...')                                                      
+                model = load(self.dir + '/models/'+load_model, weights_only=self.weights_only)
+                self.metrics.log('model loaded from pickle...')                                                      
         else:
             model = Model(model_param)
 
         if load_embed is True:
             try:
                 for feature, embedding in model.embedding_layer.items():
-                    weight = np.load('./models/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
+                    weight = np.load(self.dir + '/models/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
                     embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
-                print('loading embedding weights...')
+                self.metrics.log('loading embedding weights...')
             except:
-                print('embedding weights failed to load.  reinitializing...')
+                self.metrics.log('embedding weights failed to load.  reinitializing...')
                 
         if adapt is not None: model.adapt(*adapt)
 
@@ -368,19 +344,19 @@ class Learn():
             try:
                 model.to('cuda:0')
                 model.device = 'cuda:0'
-                print('running model on gpu...')
+                self.metrics.log('running model on gpu...')
             except:
-                print('gpu not available.  running model on cpu...')
+                self.metrics.log('gpu not available.  running model on cpu...')
                 self.gpu = False
                 model.device = 'cpu'
         else:
-            print('running model on cpu...')
+            self.metrics.log('running model on cpu...')
             model.gpu = 'cpu'
 
         if compile_model:
             _model = compile(model)
             self.model = _model
-            print('compiling model...')
+            self.metrics.log('compiling model...')
         else:
             self.model = model
 
@@ -402,7 +378,7 @@ class Learn():
                 with no_grad():
                     self.run('val')
                     if e > 1 and self.metrics.lr_log[-1] <= self.metrics.min_lr:
-                        print('early stopping!  learning rate is below the set minimum...')
+                        self.metrics.log('early stopping!  learning rate is below the set minimum...')
                         break
                 
             with no_grad():
@@ -426,24 +402,25 @@ class Learn():
                 self.model = model # save from the pre-compiled model
 
             try: 
-                save(self.model.state_dict(), './models/{}'.format(model_name))
-                print('model state dict saved...')
+                save(self.model.state_dict(), self.dir + '/model/{}'.format(model_name))
+                self.metrics.log('model state dict saved...')
             except:
-                save(self.model, './models/{}'.format(model_name))
-                print('model has been pickled...')
+                save(self.model, self.dir + '/model/{}'.format(model_name))
+                self.metrics.log('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
-                    np.save('./models/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
-                print('model embeddings saved...')
+                    np.save(self.dir + '/model/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
+                self.metrics.log('model embeddings saved...')
 
-            print('model: {} saved...'.format(model_name))
+            self.metrics.log('model: {} saved...'.format(model_name))
         
-        #del self.model
-        #del self.metrics
+        del self.model
+        del self.metrics
         gc.collect()
-        cuda.empty_cache()
+        if self.gpu: torch.cuda.empty_cache()
+            
 
     # secondary loop
     def run(self, flag): 
