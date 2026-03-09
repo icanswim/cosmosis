@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from torch import no_grad, save, load, from_numpy, cat, gc
+from torch import no_grad, save, load, from_numpy, cat
 from torch import compile, cuda
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
@@ -23,12 +23,12 @@ class Metrics():
     sk_metrics = ['accuracy_score','roc_auc_score']
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
-    def __init__(self, report_interval=10, metric_name=None, log_plot=False,
-                    dir='.', min_lr=.00125, last_n=5, metric_param={}):
+    def __init__(self, report_interval=1, metric_name=None, log_plot=False,
+                    dir='./', min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
         self.dir = dir
-        os.mkdir(self.dir + '/log', exist_ok=True)
+        os.makedirs(os.path.join(self.dir, 'log'), exist_ok=True)
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -41,7 +41,7 @@ class Metrics():
         self.predictions, self.lr_log = [], []
         
         self.metric_name, self.metric_param = metric_name, metric_param
-        self.metric_func, self.metric_train_log, self.metric_val_log = None, [], []
+        self.metric_func, self.metric_train, self.metric_val = None, [], []
         self.y, self.y_pred = [], []
         
         if self.metric_name is not None:
@@ -54,18 +54,16 @@ class Metrics():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        logging.basicConfig(filename=self.dir + '/cosmosis.log', level=20)
-        self.log('\n.....................\n')
-        self.log('\nNew Experiment: {}'.format(self.start))
+        logging.basicConfig(filename=self.dir + 'log/cosmosis.log', level=20)
+        self.log('.....................\nnew experiment: {}'.format(self.start))
     
     def infer(self):
         """
         process the predictions and save
         """
         now = datetime.now()
-        self.log('\n.....................\n')
-        self.log('\ninference job: {} \n'.format(self.start))
-        self.log('\ntotal learning time: {} \n'.format(now - self.start))
+        self.log('inference job: {}'.format(self.start))
+        self.log('total inference time: {}'.format(now - self.start))
 
         if self.metric_name == 'transformer':
             predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
@@ -75,7 +73,7 @@ class Metrics():
             predictions = np.asarray(predictions).reshape((1,-1))
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
-        self.log('predictions: ', predictions)
+        self.log('predictions: {}'.format( predictions))
         self.predictions = []
         
     def softmax_overflow(x):
@@ -117,9 +115,9 @@ class Metrics():
         score = score.item()
 
         if flag == 'train':
-            self.metric_train_log.append(score)
+            self.metric_train.append(score)
         else:
-            self.metric_val_log.append(score)
+            self.metric_val.append(score)
         
     def log(self, message):
         logging.info(message)
@@ -128,20 +126,17 @@ class Metrics():
         """
         called at the end of each run() loop
         """
-        if flag == 'train': return
+        if flag == 'train': return 
             
         now = datetime.now()
-        elapsed = now - self.report_time
-        if elapsed.total_seconds() < self.report_interval: return
-            
         tot_elapsed = now - self.start
-        self.log('total elapsed time: {}'.format(tot_elapsed))
-        self.log('epoch: {}'.format(self.epoch))
-        self.report_time = now
+        self.log('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
 
         if len(self.predictions) > 0: 
             self.log('len(self.predictions): {}'.format(len(self.predictions)))
             return
+
+        if self.epoch % self.report_interval != 0: return
         
         if self.metric_name == 'transformer':
             # get the last instance
@@ -154,14 +149,15 @@ class Metrics():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        self.log('y_pred last {} values:\n'.format(self.last_n), y_pred[-self.last_n:])
-        self.log('y last {} values:\n'.format(self.last_n), y[-self.last_n:])
-        self.log('train loss: {}, val loss: {}'.format(self.train_loss[-1], self.val_loss[-1]))
-        self.log('lr: {}'.format(self.lr_log[-1]))
+        self.log('last {} y_pred values: {}\nlast {} y values: {}'.format(
+                    self.last_n, y_pred[-self.last_n:], self.last_n, y[-self.last_n:]))
 
-        if len(self.metric_train_log) != 0:
+        self.log('train loss: {}, val loss: {}, lr: {}'.format(
+                    self.train_loss[-1], self.val_loss[-1], self.lr_log[-1]))
+
+        if len(self.metric_train) != 0:
             self.log('{} train score: {}, validation score: {}'.format(
-                self.metric_name, self.metric_train_log[-1], self.metric_val_log[-1]))
+                self.metric_name, self.metric_train[-1], self.metric_val[-1]))
     
     def loss(self, flag):
         """
@@ -183,14 +179,13 @@ class Metrics():
 
     def final(self):
         now = datetime.now()
-        self.log('\n........final........\n')
-        self.log('\ntotal learning time: {}'.format(now - self.start))
+        self.log('........final........\ntotal learning time: {}'.format(now - self.start))
 
         if len(self.test_loss) != 0:
             self.log('test loss: {}'.format(self.test_loss))
             
-        if len(self.metric_train_log) != 0:
-            self.log('\n{} test metric: {}'.format(self.metric_name, self.metric_val_log[-1]))
+        if len(self.metric_train) != 0:
+            self.log('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
 
 
 class Selector(Sampler):
@@ -292,12 +287,12 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, compile_model=False, dir='.',
+                 batch_size=10, epochs=1, compile_model=False, dir='./',
                  gpu=True, weights_only=False, num_workers=3, target='y'):
         
         self.dir = dir
-        os.mkdir(self.dir + '/model', exist_ok=True)
-        os.mkdir(self.dir + '/data ', exist_ok=True)
+        os.makedirs(os.path.join(self.dir, 'model'), exist_ok=True)
+        os.makedirs(os.path.join(self.dir, 'data'), exist_ok=True)
         self.weights_only = weights_only
         self.num_workers = num_workers
         self.gpu = gpu
@@ -312,19 +307,18 @@ class Learn():
         if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
             self.metrics.decoder = self.train_ds.encoding.decode
         
-        self.metrics.log('\nmodel: {}\n{}'.format(Model, model_param))
-        self.metrics.log('\ndataset: {}\n{}'.format(Datasets, ds_param))
-        self.metrics.log('\nsampler: {}\n{}'.format(Sampler, sample_param))
-        self.metrics.log('\nepochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+        self.metrics.log('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
+                            Model, model_param, Datasets, ds_param, Sampler, sample_param))
+        self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                         epochs, batch_size, save_model, load_model))
 
         if load_model is not None:
             try: 
                 model = Model(model_param)
-                model.load_state_dict(load(self.dir + '/models/'+load_model, weights_only=self.weights_only))
+                model.load_state_dict(load(self.dir + 'model/'+load_model, weights_only=self.weights_only))
                 self.metrics.log('model loaded from state_dict...')
             except:
-                model = load(self.dir + '/models/'+load_model, weights_only=self.weights_only)
+                model = load(self.dir + 'model/'+load_model, weights_only=self.weights_only)
                 self.metrics.log('model loaded from pickle...')                                                      
         else:
             model = Model(model_param)
@@ -332,7 +326,7 @@ class Learn():
         if load_embed is True:
             try:
                 for feature, embedding in model.embedding_layer.items():
-                    weight = np.load(self.dir + '/models/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
+                    weight = np.load(self.dir + 'model/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
                     embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
                 self.metrics.log('loading embedding weights...')
             except:
@@ -402,25 +396,25 @@ class Learn():
                 self.model = model # save from the pre-compiled model
 
             try: 
-                save(self.model.state_dict(), self.dir + '/model/{}'.format(model_name))
+                save(self.model.state_dict(), self.dir + 'model/{}'.format(model_name))
                 self.metrics.log('model state dict saved...')
             except:
-                save(self.model, self.dir + '/model/{}'.format(model_name))
+                save(self.model, self.dir + 'model/{}'.format(model_name))
                 self.metrics.log('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
-                    np.save(self.dir + '/model/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
+                    np.save(self.dir + 'model/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
                 self.metrics.log('model embeddings saved...')
 
             self.metrics.log('model: {} saved...'.format(model_name))
-        
+
         del self.model
         del self.metrics
         gc.collect()
-        if self.gpu: torch.cuda.empty_cache()
-            
+        if self.gpu: cuda.empty_cache()
+        print('experiment complete...')
 
     # secondary loop
     def run(self, flag): 
