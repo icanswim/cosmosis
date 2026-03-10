@@ -3,12 +3,10 @@ import logging, random, os, gc
 
 os.environ['NUMEXPR_MAX_THREADS'] = '16'
 
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 from torch import no_grad, save, load, from_numpy, cat
-from torch import compile, cuda
+from torch import compile, cuda, is_tensor
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -112,7 +110,7 @@ class Metrics():
         # sklearn
             score = self.metric_func(y, y_pred, **self.metric_param)
         
-        score = score.item()
+        score = score.cpu().item() if is_tensor(score) else score
 
         if flag == 'train':
             self.metric_train.append(score)
@@ -288,7 +286,7 @@ class Learn():
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
                  batch_size=10, epochs=1, compile_model=False, dir='./',
-                 gpu=True, weights_only=False, num_workers=3, target='y'):
+                 gpu=False, weights_only=False, num_workers=0, target='y'):
         
         self.dir = dir
         os.makedirs(os.path.join(self.dir, 'model'), exist_ok=True)
@@ -442,7 +440,8 @@ class Learn():
             
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
-                                     num_workers=self.num_workers, pin_memory=True, 
+                                     num_workers=self.num_workers, 
+                                     pin_memory=self.gpu, 
                                      drop_last=drop_last)
         # tertiary loop
         for data in dataloader:

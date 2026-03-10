@@ -1,7 +1,7 @@
 from math import sqrt
 
-from torch import nn, cat, squeeze, Tensor, flatten, sigmoid, arange, topk
-from torch import max, mean, multinomial, transpose, tril, ones, long, no_grad
+from torch import nn, cat, flatten, arange, topk
+from torch import multinomial, transpose, tril, ones, long
 from torch.nn import functional as F
 
 # torchvision models are imported by its launcher tv_models()
