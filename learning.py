@@ -352,7 +352,7 @@ class Learn():
             self.model = model
 
         self.metrics.log('\n{}'.format(self.model.children))
-        # primary loop 
+    
         if Criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
@@ -361,7 +361,10 @@ class Learn():
             self.metrics.log('\noptimizer: {}\n{}'.format(self.opt, opt_param))
             self.scheduler = Scheduler(self.opt, **sched_param)
             self.metrics.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
-            
+
+    # primary loop       
+    def run_experiment(self):
+        if self.criterion is not None:
             for e in range(epochs):
                 self.metrics.epoch = e
                 self.sampler.shuffle_train_val_idx()
@@ -371,10 +374,8 @@ class Learn():
                     if e > 1 and self.metrics.lr_log[-1] <= self.metrics.min_lr:
                         self.metrics.log('early stopping!  learning rate is below the set minimum...')
                         break
-                
             with no_grad():
                 self.run('test')
-                
             self.metrics.final()
             
         else: # no Criterion implies inference mode
