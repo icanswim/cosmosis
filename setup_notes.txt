@@ -3,13 +3,10 @@
 ##create a new cosmosis conda environment and folders
 git clone https://github.com/icanswim/cosmosis.git
 cd cosmosis
-mkdir data
-mkdir logs
-mkdir models
 conda env create -f environment.yml
 conda activate cosmo
 pip install torcheval
-jupyter lab
+
 
 ##instructions for the manual creation of conda environment
 git clone https://github.com/icanswim/cosmosis.git
@@ -20,10 +17,8 @@ mkdir models
 conda create --name cosmo
 conda activate cosmo
 conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-conda install -c conda-forge matplotlib
-conda install -c conda-forge scipy pandas scikit-learn
-conda install -c conda-forge jupyterlab h5py git
+conda install -c conda-forge scipy scikit-learn
 conda install -c conda-forge numpy
 pip install torcheval
-jupyter lab
+
 

@@ -21,7 +21,7 @@ class Metrics():
     sk_metrics = ['accuracy_score','roc_auc_score']
     torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
-    def __init__(self, report_interval=1, metric_name=None, log_plot=False,
+    def __init__(self, report_interval=1, metric_name=None,
                     dir='./', min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
@@ -31,7 +31,6 @@ class Metrics():
         self.report_time = now
         self.report_interval = report_interval
         self.last_n = last_n
-        self.log_plot = log_plot
         self.min_lr = min_lr
         
         self.epoch, self.e_loss, self.n = 0, 0, 0
