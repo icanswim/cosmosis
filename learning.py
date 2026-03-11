@@ -6,7 +6,7 @@ os.environ['NUMEXPR_MAX_THREADS'] = '16'
 import numpy as np
 
 from torch import no_grad, save, load, from_numpy, cat
-from torch import compile, cuda, is_tensor
+from torch import cuda, is_tensor
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
@@ -284,7 +284,7 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, compile_model=False, dir='./',
+                 batch_size=10, epochs=1, dir='./',
                  gpu=False, weights_only=False, num_workers=0, target='y'):
         
         self.dir = dir
@@ -292,12 +292,15 @@ class Learn():
         os.makedirs(os.path.join(self.dir, 'data'), exist_ok=True)
         self.weights_only = weights_only
         self.num_workers = num_workers
+        self.save_model = save_model
         self.gpu = gpu
         self.bs = batch_size
+        self.epochs = epochs
         self.target = target
         self.ds_param = ds_param
         self.dataset_manager(Datasets, Sampler, ds_param, sample_param)
         self.DataLoader = DataLoader
+        self.criterion = Criterion(**crit_param) if Criterion is not None else None
         
         self.metrics = Metrics(**metrics_param)
         self.metrics.gpu = gpu
@@ -344,16 +347,10 @@ class Learn():
             self.metrics.log('running model on cpu...')
             model.gpu = 'cpu'
 
-        if compile_model:
-            _model = compile(model)
-            self.model = _model
-            self.metrics.log('compiling model...')
-        else:
-            self.model = model
-
+        self.model = model
         self.metrics.log('\n{}'.format(self.model.children))
     
-        if Criterion is not None:
+        if self.criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
             self.metrics.log('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
@@ -365,7 +362,7 @@ class Learn():
     # primary loop       
     def run_experiment(self):
         if self.criterion is not None:
-            for e in range(epochs):
+            for e in range(self.epochs):
                 self.metrics.epoch = e
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
@@ -380,19 +377,15 @@ class Learn():
             
         else: # no Criterion implies inference mode
             with no_grad():
-                for e in range(epochs): 
+                for e in range(self.epochs): 
                     self.run('infer')
                     self.metrics.infer()
                     
-        if save_model:
-            if type(save_model) == str:
-                model_name = save_model
+        if self.save_model:
+            if type(self.save_model) == str:
+                model_name = self.save_model
             else:
                 model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
-
-            if compile_model:
-                self.model = model # save from the pre-compiled model
-
             try: 
                 save(self.model.state_dict(), self.dir + 'model/{}'.format(model_name))
                 self.metrics.log('model state dict saved...')
