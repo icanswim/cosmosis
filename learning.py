@@ -146,7 +146,7 @@ class Metrics():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        self.log('last {} y_pred values: {}\nlast {} y values: {}'.format(
+        self.log('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
                     self.last_n, y_pred[-self.last_n:], self.last_n, y[-self.last_n:]))
 
         self.log('train loss: {}, val loss: {}, lr: {}'.format(
