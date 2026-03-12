@@ -10,16 +10,16 @@ from torch import cuda, is_tensor
 from torch.utils.data import Sampler, DataLoader
 from torch.nn import functional as F
 
-from torcheval.metrics import functional as t_metrics
+from torcheval.metrics import functional as t_metric
 
-from sklearn import metrics as sk_metrics
+from sklearn import metrics as sk_metric
 
 
-class Metrics():
+class Metric():
     """
     """
-    sk_metrics = ['accuracy_score','roc_auc_score']
-    torch_metrics = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
+    sk_metric = ['accuracy_score','roc_auc_score']
+    torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=1, metric_name=None,
                     dir='./', min_lr=.00125, last_n=1, metric_param={}):
@@ -44,10 +44,10 @@ class Metrics():
         if self.metric_name is not None:
             if self.metric_name in ['transformer']:
                 self.metric_func = None
-            elif self.metric_name in Metrics.sk_metrics:
-                self.metric_func = getattr(sk_metrics, self.metric_name)
-            elif self.metric_name in Metrics.torch_metrics:
-                self.metric_func = getattr(t_metrics, self.metric_name)
+            elif self.metric_name in Metric.sk_metric:
+                self.metric_func = getattr(sk_metric, self.metric_name)
+            elif self.metric_name in Metric.torch_metric:
+                self.metric_func = getattr(t_metric, self.metric_name)
             else:
                 raise Exception('hey just what you see pal...')
                 
@@ -97,13 +97,13 @@ class Metrics():
         if self.metric_name in ['accuracy_score','multiclass_accuracy']:
             y_pred = y_pred.argmax(dim=-1)
 
-        # sklearn metrics preprocess
-        if self.metric_name in Metrics.sk_metrics:
+        # sklearn metric preprocess
+        if self.metric_name in Metric.sk_metric:
             y_pred = y_pred.detach().cpu().numpy()
             y = y.detach().cpu().numpy()
             
-        # torch metrics
-        if self.metric_name in Metrics.torch_metrics: 
+        # torch metric
+        if self.metric_name in Metric.torch_metric: 
             score = self.metric_func(y_pred, y, **self.metric_param)
         else:
         # sklearn
@@ -278,11 +278,11 @@ class Learn():
     or an object with a feature 'target' (data.target)
     the entire data object is passed to the model
     """
-    def __init__(self, Datasets, Model, Sampler=Sampler, Metrics=Metrics,
+    def __init__(self, Datasets, Model, Sampler=Sampler, Metric=Metric,
                  DataLoader=DataLoader,
                  Optimizer=None, Scheduler=None, Criterion=None, 
                  ds_param={}, model_param={}, sample_param={},
-                 opt_param={}, sched_param={}, crit_param={}, metrics_param={}, 
+                 opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
                  batch_size=10, epochs=1, dir='./',
                  gpu=False, weights_only=False, num_workers=0, target='y'):
@@ -302,24 +302,24 @@ class Learn():
         self.DataLoader = DataLoader
         self.criterion = Criterion(**crit_param) if Criterion is not None else None
         
-        self.metrics = Metrics(**metrics_param)
-        self.metrics.gpu = gpu
+        self.metric = Metric(**metric_param)
+        self.metric.gpu = gpu
         if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
-            self.metrics.decoder = self.train_ds.encoding.decode
+            self.metric.decoder = self.train_ds.encoding.decode
         
-        self.metrics.log('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
+        self.metric.log('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
                             Model, model_param, Datasets, ds_param, Sampler, sample_param))
-        self.metrics.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+        self.metric.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                         epochs, batch_size, save_model, load_model))
 
         if load_model is not None:
             try: 
                 model = Model(model_param)
                 model.load_state_dict(load(self.dir + 'model/'+load_model, weights_only=self.weights_only))
-                self.metrics.log('model loaded from state_dict...')
+                self.metric.log('model loaded from state_dict...')
             except:
                 model = load(self.dir + 'model/'+load_model, weights_only=self.weights_only)
-                self.metrics.log('model loaded from pickle...')                                                      
+                self.metric.log('model loaded from pickle...')                                                      
         else:
             model = Model(model_param)
 
@@ -328,9 +328,9 @@ class Learn():
                 for feature, embedding in model.embedding_layer.items():
                     weight = np.load(self.dir + 'model/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
                     embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
-                self.metrics.log('loading embedding weights...')
+                self.metric.log('loading embedding weights...')
             except:
-                self.metrics.log('embedding weights failed to load.  reinitializing...')
+                self.metric.log('embedding weights failed to load.  reinitializing...')
                 
         if adapt is not None: model.adapt(*adapt)
 
@@ -338,71 +338,71 @@ class Learn():
             try:
                 model.to('cuda:0')
                 model.device = 'cuda:0'
-                self.metrics.log('running model on gpu...')
+                self.metric.log('running model on gpu...')
             except:
-                self.metrics.log('gpu not available.  running model on cpu...')
+                self.metric.log('gpu not available.  running model on cpu...')
                 self.gpu = False
                 model.device = 'cpu'
         else:
-            self.metrics.log('running model on cpu...')
+            self.metric.log('running model on cpu...')
             model.gpu = 'cpu'
 
         self.model = model
-        self.metrics.log('\n{}'.format(self.model.children))
+        self.metric.log('\n{}'.format(self.model.children))
     
         if self.criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
-            self.metrics.log('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
+            self.metric.log('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
             self.opt = Optimizer(self.model.parameters(), **opt_param)
-            self.metrics.log('\noptimizer: {}\n{}'.format(self.opt, opt_param))
+            self.metric.log('\noptimizer: {}\n{}'.format(self.opt, opt_param))
             self.scheduler = Scheduler(self.opt, **sched_param)
-            self.metrics.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
+            self.metric.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
 
     # primary loop       
     def run_experiment(self):
         if self.criterion is not None:
             for e in range(self.epochs):
-                self.metrics.epoch = e
+                self.metric.epoch = e
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
                     self.run('val')
-                    if e > 1 and self.metrics.lr_log[-1] <= self.metrics.min_lr:
-                        self.metrics.log('early stopping!  learning rate is below the set minimum...')
+                    if e > 1 and self.metric.lr_log[-1] <= self.metric.min_lr:
+                        self.metric.log('early stopping!  learning rate is below the set minimum...')
                         break
             with no_grad():
                 self.run('test')
-            self.metrics.final()
+            self.metric.final()
             
         else: # no Criterion implies inference mode
             with no_grad():
                 for e in range(self.epochs): 
                     self.run('infer')
-                    self.metrics.infer()
+                    self.metric.infer()
                     
         if self.save_model:
             if type(self.save_model) == str:
                 model_name = self.save_model
             else:
-                model_name = self.metrics.start.strftime("%Y%m%d_%H%M")
+                model_name = self.metric.start.strftime("%Y%m%d_%H%M")
             try: 
                 save(self.model.state_dict(), self.dir + 'model/{}'.format(model_name))
-                self.metrics.log('model state dict saved...')
+                self.metric.log('model state dict saved...')
             except:
                 save(self.model, self.dir + 'model/{}'.format(model_name))
-                self.metrics.log('model has been pickled...')
+                self.metric.log('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save(self.dir + 'model/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
-                self.metrics.log('model embeddings saved...')
+                self.metric.log('model embeddings saved...')
 
-            self.metrics.log('model: {} saved...'.format(model_name))
+            self.metric.log('model: {} saved...'.format(model_name))
 
         del self.model
-        del self.metrics
+        del self.metric
         gc.collect()
         if self.gpu: cuda.empty_cache()
         print('experiment complete...')
@@ -450,7 +450,7 @@ class Learn():
             y_pred = self.model(data)
             
             if flag == 'infer':
-                self.metrics.predictions.append(y_pred)
+                self.metric.predictions.append(y_pred)
                 y = None
             else:
                 if type(data) == dict: y = data[self.target]
@@ -458,24 +458,24 @@ class Learn():
                     
                 self.opt.zero_grad()
                 b_loss = self.criterion(y_pred, y)
-                self.metrics.e_loss += b_loss.item()
-                self.metrics.n += self.bs
+                self.metric.e_loss += b_loss.item()
+                self.metric.n += self.bs
                 
-                if self.metrics.metric_func is not None: self.metrics.y.append(y)
-                if self.metrics.metric_func is not None: self.metrics.y_pred.append(y_pred)
+                if self.metric.metric_func is not None: self.metric.y.append(y)
+                if self.metric.metric_func is not None: self.metric.y_pred.append(y_pred)
                     
                 if flag == 'train':
                     b_loss.backward()
                     self.opt.step()
 
         if flag == 'val': 
-            self.scheduler.step(self.metrics.e_loss)
-            self.metrics.lr_log.append(self.opt.param_groups[0]['lr'])
+            self.scheduler.step(self.metric.e_loss)
+            self.metric.lr_log.append(self.opt.param_groups[0]['lr'])
             
-        self.metrics.metric(flag)
-        self.metrics.loss(flag)
-        self.metrics.report(y_pred, y, flag)
-        self.metrics.reset_loop()
+        self.metric.metric(flag)
+        self.metric.loss(flag)
+        self.metric.report(y_pred, y, flag)
+        self.metric.reset_loop()
                 
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
         
@@ -504,3 +504,4 @@ class Learn():
 
         
         
+
