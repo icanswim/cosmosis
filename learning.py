@@ -360,7 +360,7 @@ class Learn():
             self.metric.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
 
     # primary loop       
-    def run_experiment(self):
+    def run_experiment(self, prompt=None):
         if self.criterion is not None:
             for e in range(self.epochs):
                 self.metric.epoch = e
@@ -378,7 +378,7 @@ class Learn():
         else: # no Criterion implies inference mode
             with no_grad():
                 for e in range(self.epochs): 
-                    self.run('infer')
+                    self.run('infer', prompt=prompt)
                     self.metric.infer()
                     
         if self.save_model:
@@ -408,7 +408,7 @@ class Learn():
         print('experiment complete...')
 
     # secondary loop
-    def run(self, flag): 
+    def run(self, flag, prompt=None): 
         
         if flag == 'train': 
             self.model.training = True
@@ -430,6 +430,7 @@ class Learn():
             dataset = self.test_ds
             drop_last = False
             self.model.generate = True
+            dataset = dataset.prompt(prompt)
             
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
