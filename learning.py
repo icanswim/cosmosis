@@ -22,11 +22,12 @@ class Metric():
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=1, metric_name=None,
-                    dir='./', min_lr=.00125, last_n=1, metric_param={}):
+                    dir='/app/data', min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
         self.dir = dir
-        os.makedirs(os.path.join(self.dir, 'log'), exist_ok=True)
+        self.log_dir = os.path.join(self.dir, 'log') 
+        os.makedirs(self.log_dir, exist_ok=True)
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -51,7 +52,17 @@ class Metric():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        logging.basicConfig(filename=self.dir + 'log/cosmosis.log', level=20)
+        log_file = os.path.join(self.log_dir, 'cosmosis.log')
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler(sys.stdout) # Crucial for GKE log viewer
+            ]
+        )
+
+            
         self.log('.....................\nnew experiment: {}'.format(self.start))
     
     def infer(self):
@@ -284,7 +295,7 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, dir='./',
+                 batch_size=10, epochs=1, dir='/app/data',
                  gpu=False, weights_only=False, num_workers=0, target='y'):
         
         self.dir = dir
@@ -386,17 +397,19 @@ class Learn():
                 model_name = self.save_model
             else:
                 model_name = self.metric.start.strftime("%Y%m%d_%H%M")
+
+            save_path = os.path.join(self.dir, 'model', f"{model_name}")    
             try: 
-                save(self.model.state_dict(), self.dir + 'model/{}'.format(model_name))
+                save(self.model.state_dict(), save_path + '.pth')
                 self.metric.log('model state dict saved...')
             except:
-                save(self.model, self.dir + 'model/{}'.format(model_name))
+                save(self.model, save_path + '.pk')
                 self.metric.log('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
-                    np.save(self.dir + 'model/{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
+                    np.save(save_path + '_{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
                 self.metric.log('model embeddings saved...')
 
             self.metric.log('model: {} saved...'.format(model_name))
