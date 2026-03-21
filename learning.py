@@ -1,7 +1,7 @@
 from datetime import datetime
-import logging, random, os, gc
+import logging, random, os, gc, sys
 
-os.environ['NUMEXPR_MAX_THREADS'] = '16'
+os.environ['NUMEXPR_MAX_THREADS'] = '4'
 
 import numpy as np
 
@@ -22,12 +22,10 @@ class Metric():
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=1, metric_name=None,
-                    dir='/app/data', min_lr=.00125, last_n=1, metric_param={}):
+                    dir='/app/data/', min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
         self.dir = dir
-        self.log_dir = os.path.join(self.dir, 'log') 
-        os.makedirs(self.log_dir, exist_ok=True)
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -52,7 +50,7 @@ class Metric():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        log_file = os.path.join(self.log_dir, 'cosmosis.log')
+        log_file = os.path.join(self.dir, 'cosmosis.log')
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(message)s',
@@ -62,7 +60,6 @@ class Metric():
             ]
         )
 
-            
         self.log('.....................\nnew experiment: {}'.format(self.start))
     
     def infer(self):
@@ -295,12 +292,10 @@ class Learn():
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
                  adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, dir='/app/data',
+                 batch_size=10, epochs=1, dir='/app/data/',
                  gpu=False, weights_only=False, num_workers=0, target='y'):
         
         self.dir = dir
-        os.makedirs(os.path.join(self.dir, 'model'), exist_ok=True)
-        os.makedirs(os.path.join(self.dir, 'data'), exist_ok=True)
         self.weights_only = weights_only
         self.num_workers = num_workers
         self.save_model = save_model
@@ -324,20 +319,21 @@ class Learn():
                                                         epochs, batch_size, save_model, load_model))
 
         if load_model is not None:
-            try: 
+            if os.path.exists(self.dir + load_model):
+                try: 
+                    model = Model(model_param)
+                    model.load_state_dict(load(self.dir + load_model, weights_only=self.weights_only))
+                    self.metric.log('model loaded from state_dict...')
+                except:
+                    model = load(self.dir + load_model, weights_only=self.weights_only)
+                    self.metric.log('model loaded from pickle...')                                                   
+            else:
                 model = Model(model_param)
-                model.load_state_dict(load(self.dir + 'model/'+load_model, weights_only=self.weights_only))
-                self.metric.log('model loaded from state_dict...')
-            except:
-                model = load(self.dir + 'model/'+load_model, weights_only=self.weights_only)
-                self.metric.log('model loaded from pickle...')                                                      
-        else:
-            model = Model(model_param)
 
         if load_embed is True:
             try:
                 for feature, embedding in model.embedding_layer.items():
-                    weight = np.load(self.dir + 'model/{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
+                    weight = np.load(self.dir + '{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
                     embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
                 self.metric.log('loading embedding weights...')
             except:
@@ -398,7 +394,7 @@ class Learn():
             else:
                 model_name = self.metric.start.strftime("%Y%m%d_%H%M")
 
-            save_path = os.path.join(self.dir, 'model', f"{model_name}")    
+            save_path = os.path.join(self.dir, f"{model_name}")    
             try: 
                 save(self.model.state_dict(), save_path + '.pth')
                 self.metric.log('model state dict saved...')
