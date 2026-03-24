@@ -33,7 +33,7 @@ class CModel(nn.Module):
         if 'device' in model_param:
             self.device = model_param['device']
         else:
-            self.device = 'cuda:0'
+            self.device = 'cpu'
 
         self.y = 'y' # target feature label
         if 'y' in model_param:

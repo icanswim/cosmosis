@@ -1,7 +1,7 @@
 from datetime import datetime
 import logging, random, os, gc, sys
 
-os.environ['NUMEXPR_MAX_THREADS'] = '4'
+os.environ['NUMEXPR_MAX_THREADS'] = '8'
 
 import numpy as np
 
@@ -51,14 +51,21 @@ class Metric():
                 raise Exception('hey just what you see pal...')
                 
         log_file = os.path.join(self.dir, 'cosmosis.log')
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout) # Crucial for GKE log viewer
-            ]
-        )
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        
+        # Only add handlers if they aren't already there
+        if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
+            # File Handler (for your Frontend/Volume)
+            file_h = logging.FileHandler(log_file)
+            file_h.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+            root_logger.addHandler(file_h)
+
+        if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+            # Stream Handler (for your Terminal/Skaffold)
+            stream_h = logging.StreamHandler(sys.stdout)
+            stream_h.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+            root_logger.addHandler(stream_h)
 
         self.log('.....................\nnew experiment: {}'.format(self.start))
     
@@ -126,6 +133,8 @@ class Metric():
         
     def log(self, message):
         logging.info(message)
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         
     def report(self, y_pred, y, flag):
         """
