@@ -14,6 +14,7 @@ from torcheval.metrics import functional as t_metric
 
 from sklearn import metrics as sk_metric
 
+log = logging.getLogger(__name__)
 
 class Metric():
     """
@@ -50,32 +51,31 @@ class Metric():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        log_file = os.path.join(self.dir, 'cosmosis.log')
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
         
-        # Only add handlers if they aren't already there
-        if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
-            # File Handler (for your Frontend/Volume)
-            file_h = logging.FileHandler(log_file)
-            file_h.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-            root_logger.addHandler(file_h)
+        log('.....................\nnew experiment: {}'.format(self.start))
 
-        if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
-            # Stream Handler (for your Terminal/Skaffold)
-            stream_h = logging.StreamHandler(sys.stdout)
-            stream_h.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-            root_logger.addHandler(stream_h)
+    @classmethod
+    def setup_logging(cls, log_name='cosmosis', log_dir='/app/data/'):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_name = f"{log_name}_{timestamp}.log"
+        log_file = os.path.join(log_dir, log_name)
 
-        self.log('.....................\nnew experiment: {}'.format(self.start))
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler(sys.stdout)],
+            force=True)
+        logging.getLogger(cls.__name__).info(f"Logging initialized at: {log_file}")
     
     def infer(self):
         """
         process the predictions and save
         """
         now = datetime.now()
-        self.log('inference job: {}'.format(self.start))
-        self.log('total inference time: {}'.format(now - self.start))
+        log('inference job: {}'.format(self.start))
+        log('total inference time: {}'.format(now - self.start))
 
         if self.metric_name == 'transformer':
             predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
@@ -85,7 +85,7 @@ class Metric():
             predictions = np.asarray(predictions).reshape((1,-1))
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
-        self.log('predictions: {}'.format( predictions))
+        log('predictions: {}'.format( predictions))
         self.predictions = []
         
     def softmax_overflow(x):
@@ -131,11 +131,6 @@ class Metric():
         else:
             self.metric_val.append(score)
         
-    def log(self, message):
-        logging.info(message)
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        
     def report(self, y_pred, y, flag):
         """
         called at the end of each run() loop
@@ -144,10 +139,10 @@ class Metric():
             
         now = datetime.now()
         tot_elapsed = now - self.start
-        self.log('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
+        log('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
 
         if len(self.predictions) > 0: 
-            self.log('len(self.predictions): {}'.format(len(self.predictions)))
+            log('len(self.predictions): {}'.format(len(self.predictions)))
             return
 
         if self.epoch % self.report_interval != 0: return
@@ -163,14 +158,14 @@ class Metric():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        self.log('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
+        log('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
                     self.last_n, y_pred[-self.last_n:], self.last_n, y[-self.last_n:]))
 
-        self.log('train loss: {}, val loss: {}, lr: {}'.format(
+        log('train loss: {}, val loss: {}, lr: {}'.format(
                     self.train_loss[-1], self.val_loss[-1], self.lr_log[-1]))
 
         if len(self.metric_train) != 0:
-            self.log('{} train score: {}, validation score: {}'.format(
+            log('{} train score: {}, validation score: {}'.format(
                 self.metric_name, self.metric_train[-1], self.metric_val[-1]))
     
     def loss(self, flag):
@@ -193,13 +188,13 @@ class Metric():
 
     def final(self):
         now = datetime.now()
-        self.log('........final........\ntotal learning time: {}'.format(now - self.start))
+        log('........final........\ntotal learning time: {}'.format(now - self.start))
 
         if len(self.test_loss) != 0:
-            self.log('test loss: {}'.format(self.test_loss))
+            log('test loss: {}'.format(self.test_loss))
             
         if len(self.metric_train) != 0:
-            self.log('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
+            log('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
 
 
 class Selector(Sampler):
