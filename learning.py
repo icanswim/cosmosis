@@ -14,11 +14,10 @@ from torcheval.metrics import functional as t_metric
 
 from sklearn import metrics as sk_metric
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class Metric():
-    """
-    """
+    
     sk_metric = ['accuracy_score','roc_auc_score']
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
@@ -35,7 +34,7 @@ class Metric():
         
         self.epoch, self.e_loss, self.n = 0, 0, 0
         self.train_loss, self.val_loss, self.test_loss = [], [], []
-        self.predictions, self.lr_log = [], []
+        self.predictions, self.lr = [], []
         
         self.metric_name, self.metric_param = metric_name, metric_param
         self.metric_func, self.metric_train, self.metric_val = None, [], []
@@ -51,9 +50,6 @@ class Metric():
             else:
                 raise Exception('hey just what you see pal...')
                 
-        
-        log('.....................\nnew experiment: {}'.format(self.start))
-
     @classmethod
     def setup_logging(cls, log_name='cosmosis', log_dir='/app/data/'):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -67,15 +63,16 @@ class Metric():
                 logging.FileHandler(log_file),
                 logging.StreamHandler(sys.stdout)],
             force=True)
-        logging.getLogger(cls.__name__).info(f"Logging initialized at: {log_file}")
+        
+        logger = logging.getLogger(cls.__name__)
+        logger.info('logging initialized at: {}'.format(log_file))
+        return logger
     
     def infer(self):
         """
         process the predictions and save
         """
-        now = datetime.now()
-        log('inference job: {}'.format(self.start))
-        log('total inference time: {}'.format(now - self.start))
+        logger.info('inference process started...')
 
         if self.metric_name == 'transformer':
             predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
@@ -85,7 +82,7 @@ class Metric():
             predictions = np.asarray(predictions).reshape((1,-1))
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
-        log('predictions: {}'.format( predictions))
+        logger.info('predictions: {}'.format( predictions))
         self.predictions = []
         
     def softmax_overflow(x):
@@ -139,10 +136,10 @@ class Metric():
             
         now = datetime.now()
         tot_elapsed = now - self.start
-        log('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
+        logger.info('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
 
         if len(self.predictions) > 0: 
-            log('len(self.predictions): {}'.format(len(self.predictions)))
+            logger.info('len(self.predictions): {}'.format(len(self.predictions)))
             return
 
         if self.epoch % self.report_interval != 0: return
@@ -158,14 +155,14 @@ class Metric():
             y = y.detach().cpu().numpy().tolist()
             y = self.decoder(y)
             
-        log('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
+        logger.info('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
                     self.last_n, y_pred[-self.last_n:], self.last_n, y[-self.last_n:]))
 
-        log('train loss: {}, val loss: {}, lr: {}'.format(
-                    self.train_loss[-1], self.val_loss[-1], self.lr_log[-1]))
+        logger.info('train loss: {}, val loss: {}, lr: {}'.format(
+                    self.train_loss[-1], self.val_loss[-1], self.lr[-1]))
 
         if len(self.metric_train) != 0:
-            log('{} train score: {}, validation score: {}'.format(
+            logger.info('{} train score: {}, validation score: {}'.format(
                 self.metric_name, self.metric_train[-1], self.metric_val[-1]))
     
     def loss(self, flag):
@@ -178,6 +175,8 @@ class Metric():
             self.val_loss.append(self.e_loss/self.n)
         if flag == 'test':
             self.test_loss.append(self.e_loss/self.n)
+
+        logger.info('{} loss: {}'.format(flag, self.e_loss/self.n))
             
     def reset_loop(self):
         """
@@ -188,13 +187,13 @@ class Metric():
 
     def final(self):
         now = datetime.now()
-        log('........final........\ntotal learning time: {}'.format(now - self.start))
+        logger.info('........final........\ntotal learning time: {}'.format(now - self.start))
 
         if len(self.test_loss) != 0:
-            log('test loss: {}'.format(self.test_loss))
+            logger.info('test loss: {}'.format(self.test_loss))
             
         if len(self.metric_train) != 0:
-            log('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
+            logger.info('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
 
 
 class Selector(Sampler):
@@ -317,9 +316,9 @@ class Learn():
         if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
             self.metric.decoder = self.train_ds.encoding.decode
         
-        self.metric.log('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
+        logger.info('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
                             Model, model_param, Datasets, ds_param, Sampler, sample_param))
-        self.metric.log('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
+        logger.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
                                                         epochs, batch_size, save_model, load_model))
 
         if load_model is not None:
@@ -327,10 +326,10 @@ class Learn():
                 try: 
                     model = Model(model_param)
                     model.load_state_dict(load(self.dir + load_model, weights_only=self.weights_only))
-                    self.metric.log('model loaded from state_dict...')
+                    logger.info('model loaded from state_dict...')
                 except:
                     model = load(self.dir + load_model, weights_only=self.weights_only)
-                    self.metric.log('model loaded from pickle...')                                                   
+                    logger.info('model loaded from pickle...')                                                   
             else:
                 model = Model(model_param)
 
@@ -339,9 +338,9 @@ class Learn():
                 for feature, embedding in model.embedding_layer.items():
                     weight = np.load(self.dir + '{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
                     embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
-                self.metric.log('loading embedding weights...')
+                logger.info('loading embedding weights...')
             except:
-                self.metric.log('embedding weights failed to load.  reinitializing...')
+                logger.info('embedding weights failed to load.  reinitializing...')
                 
         if adapt is not None: model.adapt(*adapt)
 
@@ -349,26 +348,26 @@ class Learn():
             try:
                 model.to('cuda:0')
                 model.device = 'cuda:0'
-                self.metric.log('running model on gpu...')
+                logger.info('running model on gpu...')
             except:
-                self.metric.log('gpu not available.  running model on cpu...')
+                logger.info('gpu not available.  running model on cpu...')
                 self.gpu = False
                 model.device = 'cpu'
         else:
-            self.metric.log('running model on cpu...')
+            logger.info('running model on cpu...')
             model.gpu = 'cpu'
 
         self.model = model
-        self.metric.log('\n{}'.format(self.model.children))
+        logger.info('\n{}'.format(self.model.children))
     
         if self.criterion is not None:
             self.criterion = Criterion(**crit_param)
             if self.gpu: self.criterion.to('cuda:0')
-            self.metric.log('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
+            logger.info('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
             self.opt = Optimizer(self.model.parameters(), **opt_param)
-            self.metric.log('\noptimizer: {}\n{}'.format(self.opt, opt_param))
+            logger.info('\noptimizer: {}\n{}'.format(self.opt, opt_param))
             self.scheduler = Scheduler(self.opt, **sched_param)
-            self.metric.log('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
+            logger.info('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
 
     # primary loop       
     def run_experiment(self, prompt=None):
@@ -379,8 +378,8 @@ class Learn():
                 self.run('train')
                 with no_grad():
                     self.run('val')
-                    if e > 1 and self.metric.lr_log[-1] <= self.metric.min_lr:
-                        self.metric.log('early stopping!  learning rate is below the set minimum...')
+                    if e > 1 and self.metric.lr[-1] <= self.metric.min_lr:
+                        logger.info('early stopping!  learning rate is below the set minimum...')
                         break
             with no_grad():
                 self.run('test')
@@ -401,24 +400,24 @@ class Learn():
             save_path = os.path.join(self.dir, f"{model_name}")    
             try: 
                 save(self.model.state_dict(), save_path + '.pth')
-                self.metric.log('model state dict saved...')
+                logger.info('model state dict saved...')
             except:
                 save(self.model, save_path + '.pk')
-                self.metric.log('model has been pickled...')
+                logger.info('model has been pickled...')
                      
             if hasattr(self.model, 'embedding_layer'):
                 for feature, embedding in self.model.embedding_layer.items():
                     weight = embedding.weight.detach().cpu().numpy()
                     np.save(save_path + '_{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
-                self.metric.log('model embeddings saved...')
+                logger.info('model embeddings saved...')
 
-            self.metric.log('model: {} saved...'.format(model_name))
+            logger.info('model: {} saved...'.format(model_name))
 
         del self.model
         del self.metric
         gc.collect()
         if self.gpu: cuda.empty_cache()
-        print('experiment complete...')
+        logger.info('experiment complete...')
 
     # secondary loop
     def run(self, flag, prompt=None): 
@@ -484,7 +483,7 @@ class Learn():
 
         if flag == 'val': 
             self.scheduler.step(self.metric.e_loss)
-            self.metric.lr_log.append(self.opt.param_groups[0]['lr'])
+            self.metric.lr.append(self.opt.param_groups[0]['lr'])
             
         self.metric.metric(flag)
         self.metric.loss(flag)
