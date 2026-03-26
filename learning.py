@@ -53,27 +53,37 @@ class Metric():
     @classmethod
     def setup_logging(cls, log_name='cosmosis', log_dir='/app/data/'):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_name = f"{log_name}_{timestamp}.log"
-        log_file = os.path.join(log_dir, log_name)
+        log_file = os.path.join(log_dir, f"{log_name}_{timestamp}.log")
+
+        # 2. Use a FlushFileHandler to bypass GCS Fuse buffering
+        class FlushFileHandler(logging.FileHandler):
+            def emit(self, record):
+                super().emit(record)
+                self.flush()
+                try:
+                    os.fsync(self.stream.fileno())
+                except: pass
 
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
             handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout)],
-            force=True)
+                FlushFileHandler(log_file),
+                logging.StreamHandler(sys.stdout)
+            ],
+            force=True
+        )
         
-        logger = logging.getLogger(cls.__name__)
-        logger.info('logging initialized at: {}'.format(log_file))
+        # 3. CRITICAL: Update the global 'logger' reference in this module
+        global logger
+        logger = logging.getLogger(__name__) 
+        logger.info(f'Logging initialized at: {log_file}')
         return logger
     
     def infer(self):
         """
         process the predictions and save
         """
-        logger.info('inference process started...')
-
         if self.metric_name == 'transformer':
             predictions = F.softmax(self.predictions[-1].squeeze(), dim=-1)
             predictions = predictions.argmax(dim=-1)
@@ -84,7 +94,8 @@ class Metric():
             predictions = cat(self.predictions).detach().cpu().numpy()
         logger.info('predictions: {}'.format( predictions))
         self.predictions = []
-        
+        return predictions
+
     def softmax_overflow(x):
         x_max = x.max(axis=1, keepdims=True)
         normalized = np.exp(x - x_max)
@@ -316,6 +327,7 @@ class Learn():
         if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
             self.metric.decoder = self.train_ds.encoding.decode
         
+        logger = logging.getLogger(__name__)
         logger.info('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
                             Model, model_param, Datasets, ds_param, Sampler, sample_param))
         logger.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
@@ -389,7 +401,7 @@ class Learn():
             with no_grad():
                 for e in range(self.epochs): 
                     self.run('infer', prompt=prompt)
-                    self.metric.infer()
+                    predictions = self.metric.infer()
                     
         if self.save_model:
             if type(self.save_model) == str:
@@ -418,6 +430,7 @@ class Learn():
         gc.collect()
         if self.gpu: cuda.empty_cache()
         logger.info('experiment complete...')
+        return predictions if self.criterion is None else None
 
     # secondary loop
     def run(self, flag, prompt=None): 
@@ -458,7 +471,7 @@ class Learn():
                         _data[k] = data[k].to('cuda:0', non_blocking=True)
                     data = _data
                 else: 
-                    data = data.to('cuda:0', non_blocking=True)
+                    data = data.to('cpu', non_blocking=True)
 
             y_pred = self.model(data)
             
