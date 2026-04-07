@@ -1,3 +1,4 @@
+import logging
 from math import sqrt
 
 from torch import nn, cat, flatten, arange, topk
@@ -5,6 +6,8 @@ from torch import multinomial, transpose, tril, ones, long
 from torch.nn import functional as F
 
 # torchvision models are imported by its launcher tv_models()
+
+logger = logging.getLogger(__name__)
   
 class CModel(nn.Module):
     """A base class for cosmosis pytorch models
@@ -55,10 +58,10 @@ class CModel(nn.Module):
             self.layers = nn.ModuleList(self.layers)
             
         self.init_weights()
-        print('{} model loaded...'.format(self.__class__.__name__))
+        logger.info('CModel.__init__{} model loaded...'.format(self.__class__.__name__))
         self.get_num_params()
                             
-    def build(self, **model_params):
+    def build(self, **model_param):
         self.layers = []
         raise NotImplementedError('subclass and implement build()...')
 
@@ -73,10 +76,10 @@ class CModel(nn.Module):
                     torch.nn.init.func_(module.bias)
         """
         if hasattr(self, '_init_weights'):
-            print('applying _init_weights...')
+            logger.info('CModel.init_weights applying _init_weights...')
             self.apply(self._init_weights)
         else:
-            print('default weight initialization...')
+            logger.info('CModel.init_weights default weight initialization...')
 
     def reset_parameters(self):
         for m in self.layers:
@@ -85,7 +88,7 @@ class CModel(nn.Module):
          
     def get_num_params(self):
         n_params = sum(p.numel() for p in self.parameters())
-        print('number of model parameters: ', n_params) 
+        logger.info('CModel.get_num_params number of model parameters: {}'.format(n_params))
         
     def create_embedding_layer(self):
         """
@@ -247,7 +250,7 @@ def tv_model(model_param):
         return model._forward_impl(data['image'])
     
     model.forward = forward
-    print('torchvision model {} loaded...'.format(model_param['model_name'])) 
+    logger.info('CModel.tv_model torchvision model {} loaded...'.format(model_param['model_name'])) 
     return model
     
     
@@ -289,7 +292,7 @@ class FFNet(CModel):
                                         norm=False,
                                         activation=None))
         
-        print('FFNet model loaded...')
+        logger.info('CModel.FFNet model loaded...')
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

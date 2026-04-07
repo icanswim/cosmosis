@@ -1,18 +1,18 @@
 from abc import ABC, abstractmethod
-import os, re, random, pickle
+import logging
 
-import pandas as pd
 from pandas.api.types import CategoricalDtype
 import numpy as np
 
-from torch.utils.data import Dataset, ConcatDataset
-from torch import as_tensor, squeeze, is_tensor, cat, float32
+from torch.utils.data import Dataset
+from torch import as_tensor, squeeze, is_tensor, cat
 
 from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 #scikit and torchvision datasets are imported by their wrapper classes SKDS and TVDS
 
+logger = logging.getLogger(__name__)
 
 class CDataset(Dataset, ABC):
     """Cosmosis Dataset
@@ -67,7 +67,7 @@ class CDataset(Dataset, ABC):
                 NotImplemented("if dataset is not loaded as a dict \
                                load_data() must set self.ds_idx")
                 
-        print('CDataset created...')
+        logger.info('CDataset.__init__ created...')
         
     @abstractmethod
     def load_data(self, kwargs):
@@ -155,7 +155,7 @@ class ExampleDataset(CDataset):
                        'feature_5': np.asarray([1.2]),
                        'feature_6': np.asarray(['f','f','g'])}}
         
-        print(boom)
+        logger.info(f'ExampleDataset.load_data: {boom}')
         return datadic
 
 
@@ -211,7 +211,7 @@ class TDataset(CDataset):
         return data
 
     @abstractmethod
-    def load_data(self, d_seq=1, prompt=None, tokenizer=None, encoder=Encode, vocab={}):
+    def load_data(self, d_seq=100, prompt=None, tokenizer=None, encoder=Encode, vocab={}):
         #tokenize in the loading step
         self.tokenizer = tokenizer
         self.encoder = encoder(vocab=vocab)
@@ -219,13 +219,13 @@ class TDataset(CDataset):
 
         if prompt == None:
             ds = self.encoder(self.tokenizer(load_some_strings()))
-            ds_idx = list(range(ds.shape[-1]-self.d_seq))
-            self.ds_idx = ds_idx
+            self.ds_idx = list(range(ds.shape[-1]-self.d_seq))
         else:
-            ds = self.encoder(self.tokenzier(prompt))
+            ds = self.encoder(self.tokenizer(prompt))
             self.ds_idx = [0]
             self.d_seq = ds.shape[0]
-
+        
+        
         print('len(self.ds_idx): ', len(self.ds_idx))
         print('data.nbytes: ', ds.nbytes)
         return ds
@@ -248,7 +248,7 @@ class ImageDatasetStats():
     def __init__(self, dataset):
         self.stats = None
         i = 1
-        print('images to process: {}'.format(len(dataset.ds_idx)))
+        logger.info('images to process: {}'.format(len(dataset.ds_idx)))
         for data in dataset:
             if self.stats == None:
                 self.stats = ImStat(data['image'])
@@ -256,8 +256,8 @@ class ImageDatasetStats():
                 self.stats += ImStat(data['image'])
                 i += 1
             if i % 10000 == 0:
-                print('images processed: {}'.format(i))
-        print('mean: {}, stddev: {}'.format(self.stats.mean, self.stats.stddev))
+                logger.info('images processed: {}'.format(i))
+        logger.info('mean: {}, stddev: {}'.format(self.stats.mean, self.stats.stddev))
 
 class LoadImage():
     """A transformer for use with image file based datasets
@@ -355,7 +355,7 @@ class TVDS(CDataset):
                 'y': label}
         
     def load_data(self, dataset, tv_param):
-        print('creating torch vision {} dataset...'.format(dataset))
+        logger.info('creating torch vision {} dataset...'.format(dataset))
         from torchvision import datasets as tvds
         ds = getattr(tvds, dataset)(**tv_param)
         self.ds_idx = list(range(len(ds)))
@@ -369,7 +369,7 @@ class SKDS(CDataset):
     sk_param = dict of sklearn.datasets parameters ({'n_samples': 100})
     """   
     def load_data(self, dataset, sk_param, features_dtype, targets_dtype):
-        print('creating scikit learn {} dataset...'.format(dataset))
+        logger.info('creating scikit learn {} dataset...'.format(dataset))
         from sklearn import datasets as skds              
         ds = getattr(skds, dataset)(**sk_param)
         datadic = {}

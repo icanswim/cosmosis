@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 import logging, random, os, gc, sys
 
 os.environ['NUMEXPR_MAX_THREADS'] = '8'
@@ -22,10 +23,9 @@ class Metric():
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=1, metric_name=None,
-                    dir='/app/data/', min_lr=.00125, last_n=1, metric_param={}):
+                    min_lr=.00125, last_n=1, metric_param={}):
 
         now = datetime.now()
-        self.dir = dir
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
@@ -48,21 +48,30 @@ class Metric():
             elif self.metric_name in Metric.torch_metric:
                 self.metric_func = getattr(t_metric, self.metric_name)
             else:
-                raise Exception('hey just what you see pal...')
+                raise Exception('metric function not found...')
                 
     @classmethod
-    def setup_logging(cls, log_name='cosmosis', log_dir='/app/data/'):
+    def setup_logging(cls, log_name='cosmosis', log_dir='./data'):
+
+        if log_name is None: log_name = __name__
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"{log_name}_{timestamp}.log")
 
-        # 2. Use a FlushFileHandler to bypass GCS Fuse buffering
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except PermissionError as e:
+            print(f"logging failed for {log_dir}, error: {e}.")
+            sys.exit(1)
+
         class FlushFileHandler(logging.FileHandler):
             def emit(self, record):
                 super().emit(record)
                 self.flush()
                 try:
                     os.fsync(self.stream.fileno())
-                except: pass
+                except Exception: 
+                    pass
 
         logging.basicConfig(
             level=logging.INFO,
@@ -73,12 +82,11 @@ class Metric():
             ],
             force=True
         )
-        
-        # 3. CRITICAL: Update the global 'logger' reference in this module
-        global logger
-        logger = logging.getLogger(__name__) 
-        logger.info(f'Logging initialized at: {log_file}')
+
+        logger = logging.getLogger(log_name) 
+        logger.info(f'{log_name} logging initialized at: {log_file}')
         return logger
+
     
     def infer(self):
         """
@@ -92,9 +100,9 @@ class Metric():
             predictions = np.asarray(predictions).reshape((1,-1))
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
-        logger.info('predictions: {}'.format( predictions))
+        logger.info('learn.infer predictions: {}'.format( predictions))
         self.predictions = []
-        return predictions
+        return {'learn.infer predictions': predictions}
 
     def softmax_overflow(x):
         x_max = x.max(axis=1, keepdims=True)
@@ -104,6 +112,7 @@ class Metric():
     def metric(self, flag):
         """
         called at the end of each run() loop
+        runs and aggregates the metric function over the epoch
         TODO multiple metric
         flags = train, val, test, infer
         """
@@ -139,56 +148,50 @@ class Metric():
         else:
             self.metric_val.append(score)
         
+    def loss(self, flag):
+
+        avg_loss = self.e_loss / self.n
+        if flag == 'train':
+            self.train_loss.append(avg_loss)
+        elif flag == 'val':
+            self.val_loss.append(avg_loss)
+        elif flag == 'test':
+            self.test_loss.append(avg_loss)
+            logger.info(f'metric.loss test loss: {avg_loss}')
+
     def report(self, y_pred, y, flag):
-        """
-        called at the end of each run() loop
-        """
-        if flag == 'train': return 
-            
+
+        if flag == 'train' or flag == 'test': 
+            return 
+
         now = datetime.now()
         tot_elapsed = now - self.start
-        logger.info('epoch: {}, elapsed time: {}'.format(self.epoch, tot_elapsed))
+        
+        logger.info(f'learn.report epoch: {self.epoch} elapsed: {tot_elapsed}')
 
         if len(self.predictions) > 0: 
-            logger.info('len(self.predictions): {}'.format(len(self.predictions)))
+            logger.info(f'learn.report inference mode: {len(self.predictions)} predictions')
             return
 
-        if self.epoch % self.report_interval != 0: return
+        if self.epoch % self.report_interval != 0: 
+            return
         
         if self.metric_name == 'transformer':
-            # get the last instance
-            y_pred = y_pred[-1]
-            y = y[-1]
-            y_pred = F.softmax(y_pred, dim=-1)
-            y_pred = y_pred.argmax(dim=0)
-            y_pred = y_pred.detach().cpu().numpy().tolist()
-            y_pred = self.decoder(y_pred)
-            y = y.detach().cpu().numpy().tolist()
-            y = self.decoder(y)
-            
-        logger.info('last {} y_pred values: \n{}\nlast {} y values: \n{}'.format(
-                    self.last_n, y_pred[-self.last_n:], self.last_n, y[-self.last_n:]))
+            y_pred_val = self.decoder(F.softmax(y_pred[-1], dim=-1).argmax(dim=0).detach().cpu().numpy().tolist())
+            y_val = self.decoder(y[-1].detach().cpu().numpy().tolist())
+        else:
+            y_pred_val = y_pred[-self.last_n:]
+            y_val = y[-self.last_n:]
 
-        logger.info('train loss: {}, val loss: {}, lr: {}'.format(
-                    self.train_loss[-1], self.val_loss[-1], self.lr[-1]))
+        logger.info(f'metric.report last {self.last_n} predictions: {y_pred_val}')
+        logger.info(f'metric.report last {self.last_n} targets:     {y_val}')
+        
+        logger.info(f'metric.report train loss: {self.train_loss[-1]:.4f} val loss: {self.val_loss[-1]:.4f} lr: {self.lr[-1]}')
 
         if len(self.metric_train) != 0:
-            logger.info('{} train score: {}, validation score: {}'.format(
-                self.metric_name, self.metric_train[-1], self.metric_val[-1]))
-    
-    def loss(self, flag):
-        """
-        called at the end of each run() loop
-        """
-        if flag == 'train':
-            self.train_loss.append(self.e_loss/self.n)
-        if flag == 'val':
-            self.val_loss.append(self.e_loss/self.n)
-        if flag == 'test':
-            self.test_loss.append(self.e_loss/self.n)
+            logger.info(f'metric.report metric: {self.metric_name} | train: {self.metric_train[-1]:.4f} | val: {self.metric_val[-1]:.4f}')
 
-        logger.info('{} loss: {}'.format(flag, self.e_loss/self.n))
-            
+    
     def reset_loop(self):
         """
         called at the end of each run() loop
@@ -198,14 +201,16 @@ class Metric():
 
     def final(self):
         now = datetime.now()
-        logger.info('........final........\ntotal learning time: {}'.format(now - self.start))
-
+        logger.info('metric.final...\ntotal learning time: {}'.format(now - self.start))
+        final = {'training job': 'completed', 
+                 'total_time': now - self.start}
         if len(self.test_loss) != 0:
-            logger.info('test loss: {}'.format(self.test_loss))
-            
+            logger.info('metric.final test loss: {}'.format(self.test_loss))
+            final['test_loss'] = self.test_loss
         if len(self.metric_train) != 0:
-            logger.info('{} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
-
+            logger.info('metric.final {} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
+            final[self.metric_name] = self.metric_val[-1]
+        return final
 
 class Selector(Sampler):
     """splits = (train_split,) remainder is val_split or 
@@ -275,226 +280,200 @@ class Selector(Sampler):
     
 class Learn():
     """
-    Datasets = [TrainDS, ValDS, TestDS]
-        if 1 DS is given it is split into train/val/test using splits param
-        if 2 DS are given first one is train/val second is test
-        if 3 DS are given first is train second is val third is test
-        
-    Criterion = None implies inference mode
-    
-    load_model = None/'model_name.pth'/'model_name.pk'
-    
-    load_embed = True/False 
-
-    save_model = None/'model_name.pth'
-    
-    adapt = (D_in, D_out, dropout)
-        prepends a trainable linear layer
-
-    weights_only = True/False
-        enable un pickling of models = False (only unpickle trusted files)
-        
-    the dataset output can either be a dictionary utilizing the form 
-    data = {'model_input': {},
-            'criterion_input': {'target':{}}} 
-    or an object with a feature 'target' (data.target)
-    the entire data object is passed to the model
+    load_model = True/False or 'model_name'.pth
+    save_model = True/False or 'model_name' (if True, saved with timestamp)
+    load_embed = True/False or 'embedding_name' 
+        (if True loads embedding weights with prefix 'model_name')
     """
-    def __init__(self, Datasets, Model, Sampler=Sampler, Metric=Metric,
-                 DataLoader=DataLoader,
-                 Optimizer=None, Scheduler=None, Criterion=None, 
+    def __init__(self, Datasets, Model, Sampler, Metric, 
+                 Optimizer=None, Scheduler=None, Criterion=None, DataLoader=DataLoader,
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
-                 adapt=None, load_model=None, load_embed=False, save_model=False,
-                 batch_size=10, epochs=1, dir='/app/data/',
-                 gpu=False, weights_only=False, num_workers=0, target='y'):
+                 adapt=None, load_model=False, save_model=True,
+                 batch_size=10, epoch=1, dir='./data',
+                 gpu=False, num_workers=0, target='y'):
         
         self.dir = dir
-        self.weights_only = weights_only
         self.num_workers = num_workers
         self.save_model = save_model
+        self.load_model = load_model
         self.gpu = gpu
         self.bs = batch_size
-        self.epochs = epochs
+        self.epoch = epoch
         self.target = target
-        self.ds_param = ds_param
+
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+        except PermissionError as e:
+            logger.error(f"learn.__init__ data dir creation failed for {self.dir}, error: {e}.")
+            sys.exit(1)
+        
         self.dataset_manager(Datasets, Sampler, ds_param, sample_param)
         self.DataLoader = DataLoader
-        self.criterion = Criterion(**crit_param) if Criterion is not None else None
-        
         self.metric = Metric(**metric_param)
         self.metric.gpu = gpu
-        if hasattr(self.train_ds, 'encoding'): # retain the encodings for later use in decoding
+        self.device = 'cuda:0' if self.gpu else 'cpu'
+        if hasattr(self.train_ds, 'encoding'):
             self.metric.decoder = self.train_ds.encoding.decode
+
+        model = self.model_loader(Model, model_param, name=load_model)
         
-        logger = logging.getLogger(__name__)
-        logger.info('model: {}\n{}\ndataset: {}\n{}\nsampler: {}\n{}'.format(
-                            Model, model_param, Datasets, ds_param, Sampler, sample_param))
-        logger.info('epochs: {}, batch_size: {}, save_model: {}, load_model: {}'.format(
-                                                        epochs, batch_size, save_model, load_model))
+        if adapt is not None: 
+            model.adapt(*adapt)
 
-        if load_model is not None:
-            if os.path.exists(self.dir + load_model):
-                try: 
-                    model = Model(model_param)
-                    model.load_state_dict(load(self.dir + load_model, weights_only=self.weights_only))
-                    logger.info('model loaded from state_dict...')
-                except:
-                    model = load(self.dir + load_model, weights_only=self.weights_only)
-                    logger.info('model loaded from pickle...')                                                   
-            else:
-                model = Model(model_param)
-
-        if load_embed is True:
-            try:
-                for feature, embedding in model.embedding_layer.items():
-                    weight = np.load(self.dir + '{}_{}_embedding_weight.npy'.format(load_model[:-4], feature))
-                    embedding.from_pretrained(from_numpy(weight), freeze=model_param['embed_param'][feature][3])
-                logger.info('loading embedding weights...')
-            except:
-                logger.info('embedding weights failed to load.  reinitializing...')
-                
-        if adapt is not None: model.adapt(*adapt)
-
-        if self.gpu == True:
-            try:
-                model.to('cuda:0')
-                model.device = 'cuda:0'
-                logger.info('running model on gpu...')
-            except:
-                logger.info('gpu not available.  running model on cpu...')
-                self.gpu = False
-                model.device = 'cpu'
-        else:
-            logger.info('running model on cpu...')
-            model.gpu = 'cpu'
+        try:
+            model.to(self.device)
+            model.device = self.device
+            logger.info(f'learn.__init__ running model on {self.device}...')
+        except Exception:
+            logger.warning('learn.__init__ gpu not available. on cpu...')
+            self.gpu = False
+            self.device = 'cpu'
+            model.to('cpu')
+            model.device = 'cpu'
 
         self.model = model
-        logger.info('\n{}'.format(self.model.children))
-    
-        if self.criterion is not None:
+        
+        if Criterion is not None:
             self.criterion = Criterion(**crit_param)
-            if self.gpu: self.criterion.to('cuda:0')
-            logger.info('\ncriterion: {}\n{}'.format(self.criterion, crit_param))
+            if self.gpu: self.criterion.to(self.device)
             self.opt = Optimizer(self.model.parameters(), **opt_param)
-            logger.info('\noptimizer: {}\n{}'.format(self.opt, opt_param))
             self.scheduler = Scheduler(self.opt, **sched_param)
-            logger.info('\nscheduler: {}\n{}'.format(self.scheduler, sched_param))
+            logger.info(f'learn.__init__ learner ready: {Criterion.__name__}, {Optimizer.__name__}, Scheduler: {Scheduler.__name__}')
+        else:
+            self.criterion = None
+            self.opt, self.scheduler = None, None
+            logger.info(f'learn.__init__ inference engine ready...')
 
-    # primary loop       
+    def model_loader(self, Model, model_param, name=None):
+        model = Model(model_param)
+        
+        if type(name) != str:
+            logger.info("learn.__init__ initializing new model {}...".format(model.__class__.__name__))
+            return model
+
+        base_path = Path(self.dir) / name
+        pth_path = base_path.with_suffix('.pth')
+        
+        if pth_path.exists():
+            state_dict = load(pth_path, weights_only=True, map_location=self.device)
+            model.load_state_dict(state_dict)
+            logger.info(f"learn.__init__ model loaded from: {pth_path.name}")
+        else:
+            logger.warning(f"learn.__init__ no file found at {pth_path}. initialized new model...")
+
+        # load embeddings
+        if hasattr(model, 'embedding_layer'):
+            try:
+                for feat, embedding in model.embedding_layer.items():
+                    w_path = Path(self.dir) / f"{name}_{feat}_embedding_weight.npy"
+                    freeze = model_param['embed_param'][feat][3]
+                    
+                    np_weights = np.load(w_path)
+                    embedding.from_pretrained(from_numpy(np_weights), freeze=freeze)
+                logger.info("learn.__init__ embedding weights loaded successfully...")
+            except Exception as e:
+                logger.warning(f"learn.__init__ embedding weights failed to load: {e}")
+        logger.info('learn.__init__ model loaded: {}'.format(model.__class__.__name__))
+        return model
+    
+    def model_saver(self):
+
+        if self.save_model is True:
+            name = self.metric.start.strftime("%Y%m%d_%H%M")
+        elif type(self.save_model) == str: 
+            name = self.save_model
+        else:
+            logger.info("learn.model_saver model saving skipped...")
+            return
+            
+        base_path = Path(self.dir) / name
+        pth_path = base_path.with_suffix('.pth')
+        save(self.model.state_dict(), pth_path)
+        logger.info(f"learn.model_saver saved state_dict: {pth_path.name}")
+                
+        if hasattr(self.model, 'embedding_layer'):
+            try:
+                for feat, emb in self.model.embedding_layer.items():
+                    w_path = Path(self.dir) / f"{name}_{feat}_embedding_weight.npy"
+                    np.save(w_path, emb.weight.detach().cpu().numpy())
+                logger.info(f"learn.model_saver embeddings saved with prefix '{name}'")
+            except Exception as e:
+                logger.warning(f"learn.model_saver failed to save embeddings: {e}")
+
     def run_experiment(self, prompt=None):
         if self.criterion is not None:
-            for e in range(self.epochs):
-                self.metric.epoch = e
+            for e in range(self.epoch):
+                self.metric.epoch = e + 1
                 self.sampler.shuffle_train_val_idx()
                 self.run('train')
                 with no_grad():
                     self.run('val')
-                    if e > 1 and self.metric.lr[-1] <= self.metric.min_lr:
-                        logger.info('early stopping!  learning rate is below the set minimum...')
+                    if e > 1 and self.metric.lr[-1] <= getattr(self.metric, 'min_lr', 0):
+                        logger.info('learn.run_experiment early stopping.  lr below minimum...')
                         break
             with no_grad():
                 self.run('test')
-            self.metric.final()
-            
-        else: # no Criterion implies inference mode
+            output = self.metric.final()
+        else:
             with no_grad():
-                for e in range(self.epochs): 
-                    self.run('infer', prompt=prompt)
-                    predictions = self.metric.infer()
+                self.run('infer', prompt=prompt)
+                output = self.metric.infer()
                     
-        if self.save_model:
-            if type(self.save_model) == str:
-                model_name = self.save_model
-            else:
-                model_name = self.metric.start.strftime("%Y%m%d_%H%M")
+        self.model_saver()
+        self.cleanup()
+        return output
 
-            save_path = os.path.join(self.dir, f"{model_name}")    
-            try: 
-                save(self.model.state_dict(), save_path + '.pth')
-                logger.info('model state dict saved...')
-            except:
-                save(self.model, save_path + '.pk')
-                logger.info('model has been pickled...')
-                     
-            if hasattr(self.model, 'embedding_layer'):
-                for feature, embedding in self.model.embedding_layer.items():
-                    weight = embedding.weight.detach().cpu().numpy()
-                    np.save(save_path + '_{}_{}_embedding_weight.npy'.format(model_name, feature), weight)
-                logger.info('model embeddings saved...')
+    def run(self, flag, prompt=None):
+        logger.info(f'learn.run {flag} started...')
 
-            logger.info('model: {} saved...'.format(model_name))
-
-        del self.model
-        del self.metric
-        gc.collect()
-        if self.gpu: cuda.empty_cache()
-        logger.info('experiment complete...')
-        return predictions if self.criterion is None else None
-
-    # secondary loop
-    def run(self, flag, prompt=None): 
-        
         if flag == 'train': 
-            self.model.training = True
-            dataset = self.train_ds
-            drop_last = True
-            
-        if flag == 'val':
-            self.model.training = False
-            dataset = self.val_ds
-            drop_last = True
-
-        if flag == 'test':
-            self.model.training = False
-            dataset = self.test_ds
-            drop_last = True
-            
-        if flag == 'infer':
-            self.model.training = False
-            dataset = self.test_ds
-            drop_last = False
+            self.model.train(True)
+        
+        if flag == 'train': dataset = self.train_ds
+        elif flag == 'val':   dataset = self.val_ds
+        elif flag == 'test':  dataset = self.test_ds
+        elif flag == 'infer':
+            dataset = self.test_ds.prompt(prompt)
             self.model.generate = True
-            dataset = dataset.prompt(prompt)
-            
+ 
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag=flag), 
                                      num_workers=self.num_workers, 
                                      pin_memory=self.gpu, 
-                                     drop_last=drop_last)
-        # tertiary loop
+                                     drop_last=(flag != 'infer'))
+
+        y_pred, y = None, None
+        
         for data in dataloader:
-            if self.gpu: # overwrite the datadic with a new copy on the gpu
-                if type(data) == dict: 
-                    _data = {}
-                    for k, v in data.items():
-                        _data[k] = data[k].to('cuda:0', non_blocking=True)
-                    data = _data
-                else: 
-                    data = data.to('cpu', non_blocking=True)
+            if isinstance(data, dict):
+                data = {k: v.to(self.device, non_blocking=True) if hasattr(v, 'to') else v for k, v in data.items()}
+                y = data[self.target] if flag != 'infer' else None
+            else:
+                data = data.to(self.device, non_blocking=True)
+                y = getattr(data, self.target) if flag != 'infer' else None
 
             y_pred = self.model(data)
-            
+
             if flag == 'infer':
                 self.metric.predictions.append(y_pred)
-                y = None
-            else:
-                if type(data) == dict: y = data[self.target]
-                else: y = getattr(data, self.target)
-                    
-                self.opt.zero_grad()
-                b_loss = self.criterion(y_pred, y)
-                self.metric.e_loss += b_loss.item()
-                self.metric.n += self.bs
+                return
                 
-                if self.metric.metric_func is not None: self.metric.y.append(y)
-                if self.metric.metric_func is not None: self.metric.y_pred.append(y_pred)
+            if flag == 'train':
+                self.opt.zero_grad()
+                loss = self.criterion(y_pred, y)
+                loss.backward()
+                self.opt.step()
+            else:
+                loss = self.criterion(y_pred, y)
                     
-                if flag == 'train':
-                    b_loss.backward()
-                    self.opt.step()
+            self.metric.e_loss += loss.item()
+            self.metric.n += self.bs
+            if self.metric.metric_func:
+                self.metric.y.append(y.detach().cpu())
+                self.metric.y_pred.append(y_pred.detach().cpu())
 
-        if flag == 'val': 
+        if flag == 'val' and self.scheduler:
             self.scheduler.step(self.metric.e_loss)
             self.metric.lr.append(self.opt.param_groups[0]['lr'])
             
@@ -502,6 +481,14 @@ class Learn():
         self.metric.loss(flag)
         self.metric.report(y_pred, y, flag)
         self.metric.reset_loop()
+
+    def cleanup(self):
+        del self.model
+        del self.metric
+        gc.collect()
+        if self.gpu: cuda.empty_cache()
+        logger.info('learn.cleanup experiment complete...')
+
                 
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
         
