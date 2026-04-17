@@ -182,7 +182,7 @@ class CModel(nn.Module):
         elif self.data_keys is not None and all(hasattr(data, dk) for dk in self.data_keys): 
             for k in self.data_keys:
                 if k not in filter_keys:
-                    X.append(data.k)
+                    X.append(getattr(data, k))
             X = cat(X, dim=-1)
         # or as an array
         else:
@@ -332,7 +332,7 @@ class Attention(CModel):
         self.proj_dropout = nn.Dropout(p=.1)
 
     def forward(self, x):
-        batch, d_seq, d_vec = x.size() # d_seq = dimesion sequence (time, sentence length)
+        batch, d_seq, d_vec = x.size() # d_seq = dimesion sequence (time/sentence length)
         assert d_vec == self.d_vec
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v  = self.attn(x).split(self.d_vec, dim=2)
@@ -387,8 +387,6 @@ class GPT(CModel):
             nn.init.normal_(module.weight, mean=0.0, std=.02)
 
     def forward(self, data):
-        #pass a small dataset which contains the tokenized prompt and position sequence
-        #to start the generative loop
         if self.generate is True:
             return self._generate(data)  
         else: 
@@ -405,7 +403,7 @@ class GPT(CModel):
             x = block(x)
         x = self.layer_norm(x)
         logits = self.lm_head(x)
-
+        
         return logits
 
     def _generate(self, prompt):
@@ -415,6 +413,7 @@ class GPT(CModel):
         self.d_gen >= len(prompt)
         """
         logits = self._forward(prompt)
+        logger.info(f'GPT._generate logits: {logits}')
         while logits.shape[1] < self.d_gen:
             if self.top_k is not None:
                 v, _ = topk(logits.squeeze(), min(self.top_k, logits.size(-1)))
@@ -422,7 +421,7 @@ class GPT(CModel):
             probs = F.softmax(logits, dim=-1)
             tokens = multinomial(probs.squeeze(), num_samples=1)
             tokens = transpose(tokens, 0, 1)
-            data = {'tokens': tokens,
+            data = {'tokens': tokens, 
                     'position': arange(0, tokens.shape[-1], dtype=long).to(self.device)}
             next = self._forward(data)
             next = next[:,-1:,:]

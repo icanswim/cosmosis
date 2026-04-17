@@ -6,6 +6,7 @@ import numpy as np
 
 from torch.utils.data import Dataset
 from torch import as_tensor, squeeze, is_tensor, cat
+from torch import float32, int64
 
 from PIL import ImageFile, Image, ImageStat
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -72,11 +73,11 @@ class CDataset(Dataset, ABC):
     @abstractmethod
     def load_data(self, kwargs):
         """
-        self.ds_idx = [1,2,5,17,...] #some subset
+        self.ds_idx = [1,2,5,17,...] # some subset
             if no ds_idx provided the entire dataset will be used, 
             optionally this could be passed to the Selector/Sampler class in its sample_param
         """
-        #zero is the vocab for the padding index
+        # zero is the vocab for the padding index
         self.vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
                        'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
                        'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
@@ -123,7 +124,7 @@ class CDataset(Dataset, ABC):
                 out = getattr(data, f)
 
             if f in self.transforms:
-                transforms = self.transforms[f] #get the list of transforms for this feature
+                transforms = self.transforms[f] # get the list of transforms for this feature
                 for T in transforms:
                     out = T(out)
                 
@@ -135,7 +136,7 @@ class CDataset(Dataset, ABC):
 
 
 class ExampleDataset(CDataset):
-    #zero is the vocab for the padding index
+    # zero is the vocab for the padding index
     vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
              'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
              'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
@@ -188,7 +189,10 @@ class Encode():
 
 class TDataset(CDataset):
     """Transfomer Dataset
-    self.ds = ['token','token','token']
+    self.d_seq = number of tokens in the input sequence (the context window size)
+    self.ds = [token,token,token]
+    self.ds_idx = [0,1,2,...,n-self.d_seq]
+    position feature is created on the fly in __getitem__
     """
     def __getitem__(self, i):
         
@@ -212,11 +216,10 @@ class TDataset(CDataset):
 
     @abstractmethod
     def load_data(self, d_seq=100, prompt=None, tokenizer=None, encoder=Encode, vocab={}):
-        #tokenize in the loading step
+        # tokenize in the loading step
         self.tokenizer = tokenizer
         self.encoder = encoder(vocab=vocab)
-        self.d_seq = d_seq
-
+        self.d_seq = d_seq # n tokens (context window size)
         if prompt == None:
             ds = self.encoder(self.tokenizer(load_some_strings()))
             self.ds_idx = list(range(ds.shape[-1]-self.d_seq))
@@ -225,11 +228,14 @@ class TDataset(CDataset):
             self.ds_idx = [0]
             self.d_seq = ds.shape[0]
         
-        
         print('len(self.ds_idx): ', len(self.ds_idx))
-        print('data.nbytes: ', ds.nbytes)
         return ds
 
+class PrintArray():
+    """A transformer for printing data for debugging purposes"""
+    def __call__(self, arr):
+        print('arr: {}, shape: {}, dtype: {}'.format(arr, arr.shape, arr.dtype))
+        return arr
     
 class Pad1d():
     """Transforms a numpy array"""
@@ -268,7 +274,15 @@ class LoadImage():
 class AsTensor():
     """Transforms a numpy array to a torch tensor"""
     def __init__(self, datatype=None):
-        self.datatype = datatype
+        if type(datatype) == str:
+            if datatype == 'float32':
+                self.datatype = float32
+            elif datatype == 'int64':
+                self.datatype = int64
+            else:
+                raise ValueError('AsTensor() datatype string must be "float32" or "int64"')
+        else:           
+            self.datatype = datatype
         
     def __call__(self, arr):
         if type(arr) == list:
@@ -368,14 +382,14 @@ class SKDS(CDataset):
     dataset = sklearn datasets method name str ('make_regression')
     sk_param = dict of sklearn.datasets parameters ({'n_samples': 100})
     """   
-    def load_data(self, dataset, sk_param, features_dtype, targets_dtype):
+    def load_data(self, dataset, sk_param):
         logger.info('creating scikit learn {} dataset...'.format(dataset))
         from sklearn import datasets as skds              
         ds = getattr(skds, dataset)(**sk_param)
         datadic = {}
         for i in range(len(ds[0])):
-            datadic[i] = {'X': np.reshape(ds[0][i-1], -1).astype(features_dtype),
-                          'y': np.reshape(ds[1][i-1], -1).astype(targets_dtype)}
+            datadic[i] = {'X': np.reshape(ds[0][i-1], -1),
+                          'y': np.reshape(ds[1][i-1], -1)}
         return datadic
 
     

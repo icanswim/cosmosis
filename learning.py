@@ -149,7 +149,8 @@ class Metric():
             self.metric_val.append(score)
         
     def loss(self, flag):
-
+        if flag == 'infer':
+            return
         avg_loss = self.e_loss / self.n
         if flag == 'train':
             self.train_loss.append(avg_loss)
@@ -280,13 +281,14 @@ class Selector(Sampler):
     
 class Learn():
     """
-    load_model = True/False or 'model_name'.pth
+    load_model = True/False or 'model_name'
     save_model = True/False or 'model_name' (if True, saved with timestamp)
     load_embed = True/False or 'embedding_name' 
         (if True loads embedding weights with prefix 'model_name')
     """
-    def __init__(self, Datasets, Model, Sampler, Metric, 
-                 Optimizer=None, Scheduler=None, Criterion=None, DataLoader=DataLoader,
+    def __init__(self, Datasets, Model, Metric, 
+                 Sampler=Selector, DataLoader=DataLoader,
+                 Optimizer=None, Scheduler=None, Criterion=None,
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
                  adapt=None, load_model=False, save_model=True,
@@ -368,7 +370,6 @@ class Learn():
                 for feat, embedding in model.embedding_layer.items():
                     w_path = Path(self.dir) / f"{name}_{feat}_embedding_weight.npy"
                     freeze = model_param['embed_param'][feat][3]
-                    
                     np_weights = np.load(w_path)
                     embedding.from_pretrained(from_numpy(np_weights), freeze=freeze)
                 logger.info("learn.__init__ embedding weights loaded successfully...")
@@ -401,8 +402,8 @@ class Learn():
             except Exception as e:
                 logger.warning(f"learn.model_saver failed to save embeddings: {e}")
 
-    def run_experiment(self, prompt=None):
-        if self.criterion is not None:
+    def run_experiment(self, prompt=False):
+        if not prompt and self.criterion is not None:
             for e in range(self.epoch):
                 self.metric.epoch = e + 1
                 self.sampler.shuffle_train_val_idx()
@@ -424,37 +425,42 @@ class Learn():
         self.cleanup()
         return output
 
-    def run(self, flag, prompt=None):
-        logger.info(f'learn.run {flag} started...')
+    def run(self, flag, prompt=False):
 
         if flag == 'train': 
+            dataset = self.train_ds
             self.model.train(True)
-        
-        if flag == 'train': dataset = self.train_ds
-        elif flag == 'val':   dataset = self.val_ds
-        elif flag == 'test':  dataset = self.test_ds
-        elif flag == 'infer':
-            dataset = self.test_ds.prompt(prompt)
-            self.model.generate = True
+
+        elif flag == 'val':   
+            dataset = self.val_ds
+            self.model.train(False)
+
+        elif flag == 'test':  
+            dataset = self.test_ds
+            self.model.train(False)
  
+        elif flag == 'infer':
+            self.model.train(False)
+            if prompt:
+                dataset = self.test_ds.prompt(prompt)
+            else:
+                dataset = self.test_ds
+            self.model.generate = True
+
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
-                                     sampler=self.sampler(flag=flag), 
+                                     sampler=self.sampler(flag), 
                                      num_workers=self.num_workers, 
                                      pin_memory=self.gpu, 
                                      drop_last=(flag != 'infer'))
 
-        y_pred, y = None, None
-        
         for data in dataloader:
             if isinstance(data, dict):
-                data = {k: v.to(self.device, non_blocking=True) if hasattr(v, 'to') else v for k, v in data.items()}
+                data = {k: v.to(self.device, non_blocking=self.gpu) if hasattr(v, 'to') else v for k, v in data.items()}
                 y = data[self.target] if flag != 'infer' else None
             else:
-                data = data.to(self.device, non_blocking=True)
+                data = data.to(self.device, non_blocking=self.gpu)
                 y = getattr(data, self.target) if flag != 'infer' else None
-
             y_pred = self.model(data)
-
             if flag == 'infer':
                 self.metric.predictions.append(y_pred)
                 return
@@ -466,7 +472,6 @@ class Learn():
                 self.opt.step()
             else:
                 loss = self.criterion(y_pred, y)
-                    
             self.metric.e_loss += loss.item()
             self.metric.n += self.bs
             if self.metric.metric_func:
@@ -491,21 +496,21 @@ class Learn():
 
                 
     def dataset_manager(self, Datasets, Sampler, ds_param, sample_param):
-        
+
         if len(Datasets) == 1:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = self.test_ds = self.train_ds
             self.sampler = Sampler(dataset_idx=self.train_ds.ds_idx, 
                                        **sample_param)
 
-        if len(Datasets) == 2:
+        elif len(Datasets) == 2:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = self.train_ds
             self.test_ds = Datasets[1](**ds_param['test_param'])
             self.sampler = Sampler(train_idx=self.train_ds.ds_idx, 
                                        test_idx=self.test_ds.ds_idx,
                                            **sample_param)
-        if len(Datasets) == 3:
+        elif len(Datasets) == 3:
             self.train_ds = Datasets[0](**ds_param['train_param'])
             self.val_ds = Datasets[1](**ds_param['val_param'])
             self.test_ds = Datasets[2](**ds_param['test_param'])
@@ -513,8 +518,8 @@ class Learn():
                                        val_idx=self.val_ds.ds_idx, 
                                            test_idx=self.test_ds.ds_idx,
                                                **sample_param)
-
-
+        else:
+            raise ValueError('learn.dataset_manager check datasets...')
         
         
 
