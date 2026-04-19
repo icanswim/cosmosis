@@ -413,7 +413,6 @@ class GPT(CModel):
         self.d_gen >= len(prompt)
         """
         logits = self._forward(prompt)
-        logger.info(f'GPT._generate logits: {logits}')
         while logits.shape[1] < self.d_gen:
             if self.top_k is not None:
                 v, _ = topk(logits.squeeze(), min(self.top_k, logits.size(-1)))

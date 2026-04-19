@@ -97,7 +97,7 @@ class Metric():
             predictions = predictions.argmax(dim=-1)
             predictions = predictions.detach().cpu().numpy().tolist()
             predictions = self.decoder(predictions)
-            predictions = np.asarray(predictions).reshape((1,-1))
+            predictions = [predictions]
         else:
             predictions = cat(self.predictions).detach().cpu().numpy()
         logger.info('learn.infer predictions: {}'.format( predictions))
@@ -349,6 +349,7 @@ class Learn():
 
     def model_loader(self, Model, model_param, name=None):
         model = Model(model_param)
+        self.model_param = model_param
         
         if type(name) != str:
             logger.info("learn.__init__ initializing new model {}...".format(model.__class__.__name__))
@@ -372,11 +373,17 @@ class Learn():
                     freeze = model_param['embed_param'][feat][3]
                     np_weights = np.load(w_path)
                     embedding.from_pretrained(from_numpy(np_weights), freeze=freeze)
+                model.to(self.device)
                 logger.info("learn.__init__ embedding weights loaded successfully...")
             except Exception as e:
                 logger.warning(f"learn.__init__ embedding weights failed to load: {e}")
+
         logger.info('learn.__init__ model loaded: {}'.format(model.__class__.__name__))
         return model
+    
+    def reload_model(self, name=None):
+        self.model = self.model_loader(type(self.model), self.model_param, name=name)
+        logger.info("learn.reload_model model reloaded successfully.")
     
     def model_saver(self):
 
@@ -441,10 +448,9 @@ class Learn():
  
         elif flag == 'infer':
             self.model.train(False)
-            if prompt:
-                dataset = self.test_ds.prompt(prompt)
-            else:
-                dataset = self.test_ds
+            if prompt: 
+                self.test_ds.ds = self.test_ds.prompt(prompt)
+            dataset = self.test_ds
             self.model.generate = True
 
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
@@ -456,10 +462,11 @@ class Learn():
         for data in dataloader:
             if isinstance(data, dict):
                 data = {k: v.to(self.device, non_blocking=self.gpu) if hasattr(v, 'to') else v for k, v in data.items()}
-                y = data[self.target] if flag != 'infer' else None
+                y = data[self.target] if flag != 'infer' else None  
             else:
                 data = data.to(self.device, non_blocking=self.gpu)
                 y = getattr(data, self.target) if flag != 'infer' else None
+
             y_pred = self.model(data)
             if flag == 'infer':
                 self.metric.predictions.append(y_pred)
@@ -488,8 +495,8 @@ class Learn():
         self.metric.reset_loop()
 
     def cleanup(self):
-        del self.model
-        del self.metric
+        #del self.model
+        #del self.metric
         gc.collect()
         if self.gpu: cuda.empty_cache()
         logger.info('learn.cleanup experiment complete...')
