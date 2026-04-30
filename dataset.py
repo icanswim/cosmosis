@@ -68,7 +68,7 @@ class CDataset(Dataset, ABC):
                 NotImplemented("if dataset is not loaded as a dict \
                                load_data() must set self.ds_idx")
                 
-        logger.info('CDataset.__init__ created...')
+        logger.info('CDataset.__init__ len(self.ds_idx): {}'.format(len(self.ds_idx)))
         
     @abstractmethod
     def load_data(self, kwargs):
@@ -191,7 +191,7 @@ class TDataset(CDataset):
     """Transfomer Dataset
     self.d_seq = number of tokens in the input sequence (the context window size)
     self.ds = [token,token,token]
-    self.ds_idx = [0,1,2,...,n-self.d_seq]
+    self.ds_idx = [0,1,2,...,n-self.d_seq-1]
     position feature is created on the fly in __getitem__
     """
     def __getitem__(self, i):
@@ -222,7 +222,7 @@ class TDataset(CDataset):
         self.d_seq = d_seq # n tokens (context window size)
         if prompt == None:
             ds = self.encoder(self.tokenizer(load_some_strings()))
-            self.ds_idx = list(range(ds.shape[-1]-self.d_seq))
+            self.ds_idx = list(range(ds.shape[-1]-self.d_seq-1))
         else:
             ds = self.encoder(self.tokenizer(prompt))
             self.ds_idx = [0]

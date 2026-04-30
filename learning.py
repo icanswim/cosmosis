@@ -452,7 +452,7 @@ class Learn():
                 self.test_ds.ds = self.test_ds.prompt(prompt)
             dataset = self.test_ds
             self.model.generate = True
-
+        logger.info(f'learn.run {flag}')
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag), 
                                      num_workers=self.num_workers, 
