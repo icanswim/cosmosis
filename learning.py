@@ -207,7 +207,7 @@ class Metric():
                  'total_time': now - self.start}
         if len(self.test_loss) != 0:
             logger.info('metric.final test loss: {}'.format(self.test_loss))
-            final['test_loss'] = self.test_loss
+            final['test_loss'] = self.test_loss[-1]
         if len(self.metric_train) != 0:
             logger.info('metric.final {} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
             final[self.metric_name] = self.metric_val[-1]
