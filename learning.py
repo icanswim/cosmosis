@@ -5,6 +5,8 @@ import logging, random, os, gc, sys
 os.environ['NUMEXPR_MAX_THREADS'] = '8'
 
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 from torch import no_grad, save, load, from_numpy, cat
 from torch import cuda, is_tensor
@@ -23,7 +25,7 @@ class Metric():
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
     def __init__(self, report_interval=1, metric_name=None,
-                    min_lr=.00125, last_n=1, metric_param={}):
+                    min_lr=.00125, last_n=1, log_plot=False, metric_param={}):
 
         now = datetime.now()
         self.start = now
@@ -31,7 +33,7 @@ class Metric():
         self.report_interval = report_interval
         self.last_n = last_n
         self.min_lr = min_lr
-        
+        self.log_plot = log_plot
         self.epoch, self.e_loss, self.n = 0, 0, 0
         self.train_loss, self.val_loss, self.test_loss = [], [], []
         self.predictions, self.lr = [], []
@@ -168,8 +170,6 @@ class Metric():
         now = datetime.now()
         tot_elapsed = now - self.start
         
-        logger.info(f'learn.report epoch: {self.epoch} elapsed: {tot_elapsed}')
-
         if len(self.predictions) > 0: 
             logger.info(f'learn.report inference mode: {len(self.predictions)} predictions')
             return
@@ -184,9 +184,12 @@ class Metric():
             y_pred_val = y_pred[-self.last_n:]
             y_val = y[-self.last_n:]
 
+        logger.info(f'learn.report epoch: {self.epoch} elapsed: {tot_elapsed}')
         logger.info(f'metric.report last {self.last_n} predictions: {y_pred_val}')
-        logger.info(f'metric.report last {self.last_n} targets:     {y_val}')
-        
+        logger.info(f'metric.report last {self.last_n} targets: {y_val}')
+        self.y, self.y_pred = [], []
+
+    def final(self):
         logger.info(f'metric.report train loss: {self.train_loss[-1]:.4f} val loss: {self.val_loss[-1]:.4f} lr: {self.lr[-1]}')
 
         if len(self.metric_train) != 0:
@@ -211,7 +214,21 @@ class Metric():
         if len(self.metric_train) != 0:
             logger.info('metric.final {} test metric: {}'.format(self.metric_name, self.metric_val[-1]))
             final[self.metric_name] = self.metric_val[-1]
+            logs = zip(self.train_loss, self.val_loss, self.lr, self.metric_val)
+            cols = ['train_loss','validation_loss','learning_rate',self.metric_name]
+        else:
+            logs = zip(self.train_loss, self.val_loss, self.lr)
+            cols = ['train_loss','validation_loss','learning_rate']
+        
+        pd.DataFrame(logs, columns=cols).to_csv('./log/'+self.start.strftime("%Y%m%d_%H%M"))
+        self.view_log('./log/'+self.start.strftime('%Y%m%d_%H%M'), self.log_plot)
         return final
+    
+    @classmethod    
+    def view_log(cls, log_file, log_plot):
+        log = pd.read_csv(log_file)
+        log.iloc[:,1:5].plot(logy=log_plot)
+        plt.show() 
 
 class Selector(Sampler):
     """splits = (train_split,) remainder is val_split or 
@@ -452,7 +469,6 @@ class Learn():
                 self.test_ds.ds = self.test_ds.prompt(prompt)
             dataset = self.test_ds
             self.model.generate = True
-        logger.info(f'learn.run {flag}')
         dataloader = self.DataLoader(dataset, batch_size=self.bs, 
                                      sampler=self.sampler(flag), 
                                      num_workers=self.num_workers, 
