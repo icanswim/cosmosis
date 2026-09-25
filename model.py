@@ -29,22 +29,14 @@ class CModel(nn.Module):
     def __init__(self, model_param):
         super().__init__()
 
-        self.data_keys = ['X']
-        if 'data_keys' in model_param:
-            self.data_keys = model_param['data_keys']
+        self.data_keys = model_param.get('data_keys', ['X'])
 
-        if 'device' in model_param:
-            self.device = model_param['device']
-        else:
-            self.device = 'cpu'
+        self.y = model_param.get('y', 'y') # target feature label
 
-        self.y = 'y' # target feature label
-        if 'y' in model_param:
-            self.y = model_param['y']
-            
-        self.embed_param = None
-        if 'embed_param' in model_param:
-            self.embed_param = model_param['embed_param']
+        self.device = model_param.get('device', 'cpu')
+
+        self.embed_param = model_param.get('embed_param', None)
+        if self.embed_param is not None:
             self.embedding_layer = self.create_embedding_layer()
             if 'flatten' not in self.embed_param:
                 self.embed_param['flatten'] = False

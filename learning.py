@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 import logging, random, os, gc, sys
+from xml.parsers.expat import model
 
 os.environ['NUMEXPR_MAX_THREADS'] = '8'
 
@@ -176,17 +177,19 @@ class Metric():
 
         if self.epoch % self.report_interval != 0: 
             return
-        
+
         if self.metric_name == 'transformer':
-            y_pred_val = self.decoder(F.softmax(y_pred[-1], dim=-1).argmax(dim=0).detach().cpu().numpy().tolist())
-            y_val = self.decoder(y[-1].detach().cpu().numpy().tolist())
+            y_pred = F.softmax(y_pred[-1].squeeze(), dim=0).argmax(dim=0).detach().cpu().numpy().tolist()
+            y_pred = self.decoder(y_pred)
+            y = y[-1].detach().cpu().numpy().tolist()
+            y = self.decoder(y)
         else:
-            y_pred_val = y_pred[-self.last_n:]
-            y_val = y[-self.last_n:]
+            y_pred = y_pred[-self.last_n:]
+            y = y[-self.last_n:]
 
         logger.info(f'learn.report epoch: {self.epoch} elapsed: {tot_elapsed}')
-        logger.info(f'metric.report last {self.last_n} predictions: {y_pred_val}')
-        logger.info(f'metric.report last {self.last_n} targets: {y_val}')
+        logger.info(f'metric.report last {self.last_n} predictions: {y_pred}')
+        logger.info(f'metric.report last {self.last_n} targets: {y}')
         self.y, self.y_pred = [], []
 
     def final(self):
@@ -238,7 +241,7 @@ class Selector(Sampler):
                  splits=(.7,.15), set_seed=False, subset=False):
         self.set_seed = set_seed
         
-        if dataset_idx == None:  
+        if dataset_idx is None:  
             self.dataset_idx = train_idx
         else:
             self.dataset_idx = dataset_idx
@@ -300,8 +303,7 @@ class Learn():
     """
     load_model = True/False or 'model_name'
     save_model = True/False or 'model_name' (if True, saved with timestamp)
-    load_embed = True/False or 'embedding_name' 
-        (if True loads embedding weights with prefix 'model_name')
+    checks for and loads embedding weights with prefix 'model_name' 
     """
     def __init__(self, Datasets, Model, Metric, 
                  Sampler=Selector, DataLoader=DataLoader,
@@ -326,31 +328,23 @@ class Learn():
         except PermissionError as e:
             logger.error(f"learn.__init__ data dir creation failed for {self.dir}, error: {e}.")
             sys.exit(1)
-        
-        self.dataset_manager(Datasets, Sampler, ds_param, sample_param)
-        self.DataLoader = DataLoader
+
         self.metric = Metric(**metric_param)
         self.metric.gpu = gpu
-        self.device = 'cuda:0' if self.gpu else 'cpu'
+
+        self.dataset_manager(Datasets, Sampler, ds_param, sample_param)
+        self.DataLoader = DataLoader
         if hasattr(self.train_ds, 'encoding'):
             self.metric.decoder = self.train_ds.encoding.decode
 
+        self.device = 'cuda:0' if self.gpu else 'cpu'
+        model_param['device'] = self.device
+
         model = self.model_loader(Model, model_param, name=load_model)
-        
-        if adapt is not None: 
-            model.adapt(*adapt)
-
-        try:
-            model.to(self.device)
-            model.device = self.device
-            logger.info(f'learn.__init__ running model on {self.device}...')
-        except Exception:
-            logger.warning('learn.__init__ gpu not available. on cpu...')
-            self.gpu = False
-            self.device = 'cpu'
-            model.to('cpu')
-            model.device = 'cpu'
-
+        _device = next(model.parameters()).device
+        logger.info(f'learn.__init__ running {model.__class__.__name__} on {_device}...')
+        if adapt is not None: model.adapt(*adapt)
+        self.device = _device
         self.model = model
         
         if Criterion is not None:
@@ -370,7 +364,10 @@ class Learn():
         
         if type(name) != str:
             logger.info("learn.__init__ initializing new model {}...".format(model.__class__.__name__))
-            return model
+            if hasattr(model, 'embedding_layer'):
+                for feat, embedding in model.embedding_layer.items():
+                    embedding.to(self.device)
+            return model.to(self.device)
 
         base_path = Path(self.dir) / name
         pth_path = base_path.with_suffix('.pth')
@@ -390,13 +387,13 @@ class Learn():
                     freeze = model_param['embed_param'][feat][3]
                     np_weights = np.load(w_path)
                     embedding.from_pretrained(from_numpy(np_weights), freeze=freeze)
-                model.to(self.device)
+                
                 logger.info("learn.__init__ embedding weights loaded successfully...")
             except Exception as e:
                 logger.warning(f"learn.__init__ embedding weights failed to load: {e}")
 
         logger.info('learn.__init__ model loaded: {}'.format(model.__class__.__name__))
-        return model
+        return model.to(self.device)
     
     def reload_model(self, name=None):
         self.model = self.model_loader(type(self.model), self.model_param, name=name)
@@ -498,8 +495,8 @@ class Learn():
             self.metric.e_loss += loss.item()
             self.metric.n += self.bs
             if self.metric.metric_func:
-                self.metric.y.append(y.detach().cpu())
-                self.metric.y_pred.append(y_pred.detach().cpu())
+                self.metric.y.append(y)
+                self.metric.y_pred.append(y_pred)
 
         if flag == 'val' and self.scheduler:
             self.scheduler.step(self.metric.e_loss)
