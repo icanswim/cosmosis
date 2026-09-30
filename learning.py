@@ -25,13 +25,14 @@ class Metric():
     sk_metric = ['accuracy_score','roc_auc_score']
     torch_metric = ['auc','multiclass_accuracy','multiclass_auprc','binary_accuracy']
     
-    def __init__(self, report_interval=1, metric_name=None,
+    def __init__(self, report_interval=1, metric_name=None, dir='.data/',
                     min_lr=.00125, last_n=1, log_plot=False, metric_param={}):
 
         now = datetime.now()
         self.start = now
         self.report_time = now
         self.report_interval = report_interval
+        self.dir = dir
         self.last_n = last_n
         self.min_lr = min_lr
         self.log_plot = log_plot
@@ -54,7 +55,7 @@ class Metric():
                 raise Exception('metric function not found...')
                 
     @classmethod
-    def setup_logging(cls, log_name='cosmosis', log_dir='./data'):
+    def setup_logging(cls, log_name=None, log_dir='./data/log/'):
 
         if log_name is None: log_name = __name__
 
@@ -312,7 +313,7 @@ class Learn():
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
                  adapt=None, load_model=False, save_model=True,
                  batch_size=10, epoch=1, dir='./data',
-                 gpu=False, num_workers=0, target='y'):
+                 gpu=False, num_workers=0, target='y', project='demo'):
         
         self.dir = dir
         self.num_workers = num_workers
@@ -322,6 +323,7 @@ class Learn():
         self.bs = batch_size
         self.epoch = epoch
         self.target = target
+        self.project = project
 
         try:
             os.makedirs(self.dir, exist_ok=True)
@@ -329,7 +331,7 @@ class Learn():
             logger.error(f"learn.__init__ data dir creation failed for {self.dir}, error: {e}.")
             sys.exit(1)
 
-        self.metric = Metric(**metric_param)
+        self.metric = Metric(**metric_param, dir=self.dir)
         self.metric.gpu = gpu
 
         self.dataset_manager(Datasets, Sampler, ds_param, sample_param)
