@@ -60,6 +60,7 @@ class CDataset(Dataset, ABC):
     def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
         self.transforms = transforms
+        self.dir = kwargs.get('dir', './data')
         self.ds = self.load_data(**kwargs)        
         if not hasattr(self, 'ds_idx'):
             try:
