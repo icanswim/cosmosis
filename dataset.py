@@ -60,7 +60,7 @@ class CDataset(Dataset, ABC):
     def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
         self.transforms = transforms
-        self.ds = self.load_data(kwargs)        
+        self.ds = self.load_data(**kwargs)        
         if not hasattr(self, 'ds_idx'):
             try:
                 self.ds_idx = list(self.ds.keys())
