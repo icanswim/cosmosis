@@ -33,7 +33,7 @@ class CModel(nn.Module):
 
         self.y = model_param.get('y', 'y') # target feature label
 
-        self.device = model_param.get('device', 'cpu')
+        self.device = model_param.pop('device', 'cpu')
 
         self.embed_param = model_param.get('embed_param', None)
         if self.embed_param is not None:
@@ -263,7 +263,7 @@ class FFNet(CModel):
                               'dropout': [.1, .2, .3, .1, .2]}
 
     def build(self, model_name='funnel', activation='ReLU', 
-                  in_channels=0, hidden=0, out_channels=0, **kwargs):
+                  in_channels=0, hidden=0, out_channels=0):
 
         config = FFNet.model_config[model_name]
         self.layers = []

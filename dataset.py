@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import logging
+import logging, pickle, os
 
 from pandas.api.types import CategoricalDtype
 import numpy as np
@@ -60,8 +60,7 @@ class CDataset(Dataset, ABC):
     def __init__ (self, input_dict=None, transforms={}, **kwargs):
         self.input_dict = input_dict
         self.transforms = transforms
-        self.dir = kwargs.get('dir', './data')
-        self.ds = self.load_data(**kwargs)        
+        self.ds = self.load_data(kwargs)        
         if not hasattr(self, 'ds_idx'):
             try:
                 self.ds_idx = list(self.ds.keys())
@@ -72,7 +71,7 @@ class CDataset(Dataset, ABC):
         logger.info('CDataset.__init__ len(self.ds_idx): {}'.format(len(self.ds_idx)))
         
     @abstractmethod
-    def load_data(self, kwargs):
+    def load_data(self, dir='./data', use_pickle=False, **kwargs):
         """
         self.ds_idx = [1,2,5,17,...] # some subset
             if no ds_idx provided the entire dataset will be used, 
@@ -80,10 +79,14 @@ class CDataset(Dataset, ABC):
         """
         # zero is the vocab for the padding index
         self.vocab = {'feature_4': {'a': 1,'b': 2,'c': 3,'d': 4, '0': 0},
-                       'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
-                       'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
+                      'feature_3': {'z1': 1, 'y1': 2, 'x1': 3, '0': 0},
+                      'feature_6': {'e': 1, 'f': 2, 'g': 3, '0': 0}}
         
-        datadic = {1: {'feature_1': np.asarray([.04]),
+        if use_pickle and os.path.exists(f'{dir}/{use_pickle}'):
+            ds = self.load_pickle(file=f'{dir}/{use_pickle}')
+            return ds
+
+        ds = {1: {'feature_1': np.asarray([.04]),
                        'feature_2': np.asarray([[.02,.03],[.04,.05]]),
                        'feature_3': np.asarray(['z1']),
                        'feature_4': np.asarray(['c','c','d']),
@@ -95,8 +98,21 @@ class CDataset(Dataset, ABC):
                        'feature_4': np.asarray(['d','a','d']),
                        'feature_5': np.asarray([1.2]),
                        'feature_6': np.asarray(['f','f','g'])}}
-        
-        return datadic
+
+        if use_pickle and not os.path.exists(f'{dir}/{use_pickle}'):
+            self.pickle_data(ds, file=f'{dir}/{use_pickle}')
+
+        return ds
+
+    def load_pickle(self, in_file='./data/test.pkl'):
+        with open(in_file, 'rb') as f:
+            logger.info(f'loading pickle data from {in_file}')
+            return pickle.load(f)
+
+    def pickle_data(self, data, in_file='./data/test.pkl'):
+        with open(in_file, 'wb') as f:
+            pickle.dump(data, f)
+        logger.info(f'pickle data saved to {in_file}')
     
     def __iter__(self):
         for i in self.ds_idx:

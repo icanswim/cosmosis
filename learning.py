@@ -56,6 +56,10 @@ class Metric():
                 
     @classmethod
     def setup_logging(cls, log_name=None, log_dir='log'):
+        """
+        call this method in the main to initialize logging.
+        logger = Metric.setup_logging(log_name='cosmosis_experiment', log_dir='./log')
+        """
 
         if log_name is None: log_name = __name__
 
@@ -65,7 +69,7 @@ class Metric():
         try:
             os.makedirs(log_dir, exist_ok=True)
         except PermissionError as e:
-            print(f"logging failed for {log_dir}, error: {e}.")
+            print(f"failed to create {log_dir}, error: {e}.")
             sys.exit(1)
 
         class FlushFileHandler(logging.FileHandler):
@@ -311,7 +315,7 @@ class Learn():
                  Optimizer=None, Scheduler=None, Criterion=None,
                  ds_param={}, model_param={}, sample_param={},
                  opt_param={}, sched_param={}, crit_param={}, metric_param={}, 
-                 adapt=None, load_model=False, save_model=True,
+                 adapt=None, load_model=False, save_model=False,
                  batch_size=10, epoch=1, dir='./',
                  gpu=False, num_workers=0, target='y'):
         
@@ -490,14 +494,14 @@ class Learn():
             if flag == 'infer':
                 self.metric.predictions.append(y_pred)
                 return
+            
+            loss = self.criterion(y_pred, y)
                 
             if flag == 'train':
                 self.opt.zero_grad()
-                loss = self.criterion(y_pred, y)
                 loss.backward()
                 self.opt.step()
-            else:
-                loss = self.criterion(y_pred, y)
+
             self.metric.e_loss += loss.item()
             self.metric.n += self.bs
             if self.metric.metric_func:
@@ -531,7 +535,7 @@ class Learn():
         try:
             os.makedirs(data_dir, exist_ok=True)
         except PermissionError as e:
-            print(f"logging failed for {data_dir}, error: {e}.")
+            print(f"failed to create {data_dir}, error: {e}.")
             sys.exit(1)
 
         if len(Datasets) == 1:
