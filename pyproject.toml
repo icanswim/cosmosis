@@ -8,10 +8,10 @@ dependencies = [
     "pandas>=3.0.6",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
-    "torch>=2.14.1",
-    "torchaudio>=2.11.0",
+    "torch>=2.12.0,<2.13.0",
+    "torchaudio>=2.11.0,<2.12.0",
     "torcheval>=0.0.7",
-    "torchvision>=0.29.1",
+    "torchvision>=0.27.0,<0.28.0",
 ]
 
 [tool.setuptools.packages.find]
