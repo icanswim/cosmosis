@@ -24,7 +24,7 @@ uv sync
 uv run jupyter lab
 ```
 
-### Conda Environment
+### `conda` Environment
 
 ```bash
 conda create --name cosmo python=3.12 pip -y
@@ -34,7 +34,7 @@ pip install torcheval
 jupyter lab
 ```
 
-### Conda Environment (Manual Creation)
+### `conda` Environment (Manual Creation)
 
 ```bash
 conda create --name cosmo python=3.12
