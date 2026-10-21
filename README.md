@@ -24,7 +24,7 @@ uv sync
 uv run jupyter lab
 ```
 
-### Conda Environment (Automated)
+### Conda Environment
 
 ```bash
 conda create --name cosmo python=3.12 pip -y
@@ -67,7 +67,7 @@ jupyter lab
 
 ---
 
-## Installed Packages Reference
+## Installed Packages
 
 | Package | Version |
 | :--- | :--- |
